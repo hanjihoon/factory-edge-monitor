@@ -1,0 +1,12 @@
+.gradle/
+build/
+out/
+.idea/
+*.iml
+.DS_Store
+# 게이트웨이 로컬 버퍼 (컨테이너 볼륨으로 관리)
+data/
+*.db
+
+# 회사 과제 원문은 공개 저장소에 올리지 않는다
+docs/assignment/

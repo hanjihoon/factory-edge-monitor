@@ -1,0 +1,104 @@
+# docker compose up --build 한 번으로 전체 구성이 뜬다.
+#
+# 네트워크로 폐쇄망을 흉내 낸다.
+#   factory-a / factory-b : 공장 내부망. internal: true라 바깥으로 못 나간다.
+#   uplink                : 게이트웨이 → 회선(toxiproxy). 게이트웨이가 서버로 가는 유일한 길
+#   central               : 중앙 서버 영역
+# 게이트웨이는 포트를 하나도 열지 않는다. 서버로 나가는 연결만 있다 (아웃바운드만 허용 조건).
+# toxiproxy가 공장 회선 역할을 하므로, 여기서 끊기·지연을 걸면 실제 회선 장애와 같은 효과가 난다.
+
+name: fem
+
+services:
+  timescaledb:
+    image: timescale/timescaledb:latest-pg17
+    environment:
+      POSTGRES_DB: fem
+      POSTGRES_USER: fem
+      POSTGRES_PASSWORD: fem
+    volumes: [ "db-data:/var/lib/postgresql/data" ]
+    networks: [ central ]
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U fem -d fem" ]
+      interval: 3s
+      retries: 20
+
+  server:
+    build: { context: ., args: { MODULE: server } }
+    environment:
+      DB_URL: jdbc:postgresql://timescaledb:5432/fem
+      DB_USER: fem
+      DB_PASSWORD: fem
+    ports: [ "8080:8080" ]           # 관제 UI + REST + WebSocket
+    depends_on:
+      timescaledb: { condition: service_healthy }
+    networks: [ central ]
+
+  # 공장 회선 모사. 8474는 장애 주입용 관리 API
+  toxiproxy:
+    image: ghcr.io/shopify/toxiproxy:2.9.0
+    command: [ "-host=0.0.0.0", "-config=/config/toxiproxy.json" ]
+    volumes: [ "./infra/toxiproxy:/config:ro" ]
+    ports: [ "8474:8474" ]
+    networks: [ uplink, central ]
+
+  # 공장 A 내부 MQTT 브로커
+  mosquitto:
+    image: eclipse-mosquitto:2
+    volumes: [ "./infra/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro" ]
+    networks: [ factory-a ]
+
+  # 설비 1,000대 (A: MQTT 600, B: Modbus 400). 두 공장망에 모두 붙는다.
+  emulator:
+    build: { context: ., args: { MODULE: emulator } }
+    environment:
+      MQTT_URL: tcp://mosquitto:1883
+      MQTT_DEVICES: 600
+      MODBUS_DEVICES: 400
+      MODBUS_BASE_PORT: 5020         # 5020~5023, 포트당 unit 1~100 (라인 컨트롤러 4대 가정)
+      FAULT_DUPLICATE_RATE: 0.01     # 1% 확률로 같은 메시지 재발행
+      FAULT_REORDER_RATE: 0.01       # 1% 확률로 다음 메시지와 순서 바꿔 발행
+      FAULT_DELAY_MAX_MS: 300        # 0~300ms 무작위 지연
+    depends_on: [ mosquitto ]
+    networks: [ factory-a, factory-b ]
+
+  gateway-a:
+    build: { context: ., args: { MODULE: gateway } }
+    environment:
+      GATEWAY_ID: gw-a
+      FACTORY_ID: A
+      GATEWAY_TOKEN: gw-a-secret       # 설치 시 발급되는 게이트웨이 토큰이라고 가정
+      SOURCE: mqtt
+      MQTT_URL: tcp://mosquitto:1883
+      SERVER_WS_URL: ws://toxiproxy:18081/ws/gateway
+      BUFFER_PATH: /data/buffer.db
+    volumes: [ "gw-a-data:/data" ]
+    depends_on: [ mosquitto, toxiproxy ]
+    networks: [ factory-a, uplink ]
+
+  gateway-b:
+    build: { context: ., args: { MODULE: gateway } }
+    environment:
+      GATEWAY_ID: gw-b
+      FACTORY_ID: B
+      GATEWAY_TOKEN: gw-b-secret
+      SOURCE: modbus
+      MODBUS_HOST: emulator
+      MODBUS_BASE_PORT: 5020
+      MODBUS_DEVICES: 400
+      SERVER_WS_URL: ws://toxiproxy:18082/ws/gateway
+      BUFFER_PATH: /data/buffer.db
+    volumes: [ "gw-b-data:/data" ]
+    depends_on: [ emulator, toxiproxy ]
+    networks: [ factory-b, uplink ]
+
+networks:
+  factory-a: { internal: true }
+  factory-b: { internal: true }
+  uplink: { }
+  central: { }
+
+volumes:
+  db-data:
+  gw-a-data:   # 게이트웨이 디스크 버퍼. 컨테이너를 재시작해도 남는다
+  gw-b-data:

@@ -1,0 +1,15 @@
+server:
+  port: 8080
+
+spring:
+  application.name: fem-server
+  threads.virtual.enabled: true   # 게이트웨이 WebSocket 처리와 JDBC 블로킹 I/O를 가상 스레드로
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/fem}
+    username: ${DB_USER:fem}
+    password: ${DB_PASSWORD:fem}
+  flyway:
+    enabled: true
+
+management:
+  endpoints.web.exposure.include: health,metrics,prometheus

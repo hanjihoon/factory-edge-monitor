@@ -1,0 +1,20 @@
+// 게이트웨이는 공장 현장에 놓이는 엣지 장비라고 가정한다.
+// 자원이 작은 장비에서 돌 수 있도록 Spring 없이 순수 Java + 최소 라이브러리로 만든다.
+// 서버와의 WebSocket은 JDK 내장 java.net.http.WebSocket을 쓰므로 의존성이 없다.
+plugins { application }
+
+dependencies {
+    implementation(project(":common"))
+    implementation(libs.paho.mqtt)       // 공장 A 브로커 구독
+    implementation(libs.j2mod)           // 공장 B Modbus master (1초 폴링)
+    implementation(libs.sqlite.jdbc)     // 단절 중 로컬 디스크 버퍼
+    implementation(libs.jackson.databind)
+    implementation(libs.slf4j.api)
+    runtimeOnly(libs.logback.classic)
+
+    testImplementation(platform(libs.junit.bom))
+    testImplementation("org.junit.jupiter:junit-jupiter")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+}
+
+application { mainClass.set("fem.gateway.GatewayMain") }

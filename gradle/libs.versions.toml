@@ -1,0 +1,23 @@
+[versions]
+spring-boot = "4.0.0"
+spring-dep-mgmt = "1.1.7"
+jackson = "3.0.0"          # Spring Boot 4 기본이 Jackson 3 (패키지: tools.jackson)
+paho = "1.2.5"
+j2mod = "3.2.1"
+sqlite = "3.47.1.0"
+slf4j = "2.0.16"
+logback = "1.5.16"
+junit = "5.11.4"
+
+[libraries]
+jackson-databind = { module = "tools.jackson.core:jackson-databind", version.ref = "jackson" }
+paho-mqtt = { module = "org.eclipse.paho:org.eclipse.paho.client.mqttv3", version.ref = "paho" }
+j2mod = { module = "com.ghgande:j2mod", version.ref = "j2mod" }
+sqlite-jdbc = { module = "org.xerial:sqlite-jdbc", version.ref = "sqlite" }
+slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
+logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
+junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
+
+[plugins]
+spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }
+spring-dep-mgmt = { id = "io.spring.dependency-management", version.ref = "spring-dep-mgmt" }

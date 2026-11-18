@@ -1,0 +1,4 @@
+[
+  { "name": "gw-a-uplink", "listen": "0.0.0.0:18081", "upstream": "server:8080", "enabled": true },
+  { "name": "gw-b-uplink", "listen": "0.0.0.0:18082", "upstream": "server:8080", "enabled": true }
+]
