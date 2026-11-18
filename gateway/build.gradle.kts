@@ -6,7 +6,7 @@ plugins { application }
 dependencies {
     implementation(project(":common"))
     implementation(libs.paho.mqtt)       // 공장 A 브로커 구독
-    implementation(libs.j2mod)           // 공장 B Modbus master (1초 폴링)
+    implementation(libs.j2mod)           // 공장 B Modbus master (0.5초 폴링)
     implementation(libs.sqlite.jdbc)     // 단절 중 로컬 디스크 버퍼
     implementation(libs.jackson.databind)
     implementation(libs.slf4j.api)
@@ -17,4 +17,12 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
-application { mainClass.set("fem.gateway.GatewayMain") }
+// sqlite-jdbc는 네이티브 라이브러리를 System.load로 올린다. JDK 25는 이를 경고하고 이후 버전에서 막을 예정이라 명시적으로 허용한다.
+val nativeAccess = "--enable-native-access=ALL-UNNAMED"
+
+application {
+    mainClass.set("fem.gateway.GatewayMain")
+    applicationDefaultJvmArgs = listOf(nativeAccess)
+}
+
+tasks.withType<Test>().configureEach { jvmArgs(nativeAccess) }
