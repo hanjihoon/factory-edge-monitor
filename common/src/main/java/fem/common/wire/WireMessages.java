@@ -51,7 +51,11 @@ public final class WireMessages {
     public record Command(String commandId, String deviceId, CommandAction action, long issuedAt, int attempt) {
     }
 
-    /** 게이트웨이 → 서버. 명령 실행 결과. 같은 commandId에 대해 여러 번 와도 서버는 처음 것만 반영한다. */
+    /**
+     * 게이트웨이 → 서버. 명령 실행 결과. 같은 commandId에 대해 여러 번 와도 서버는 처음 것만 반영한다.
+     * 재시도된 명령에는 게이트웨이가 처음 결과를 그대로 다시 보낸다 ("중복"이라는 별도 결과를 두지 않는다.
+     * 그래야 서버가 재시도 응답만 받아도 실제로 적용됐는지 알 수 있다).
+     */
     public record CommandResult(String commandId, String deviceId, CommandOutcome outcome, String detail, long executedAt) {
     }
 
@@ -63,7 +67,6 @@ public final class WireMessages {
     public enum CommandOutcome {
         APPLIED,            // 설비 상태가 바뀜
         ALREADY_IN_STATE,   // 이미 그 상태라 아무것도 안 함 (멱등)
-        DUPLICATE,          // 같은 commandId를 이미 처리함 → 이전 결과 재전송
         DEVICE_UNREACHABLE, // 게이트웨이가 설비에 명령을 못 씀
         UNKNOWN_DEVICE
     }
