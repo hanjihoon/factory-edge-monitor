@@ -54,7 +54,10 @@ public record GatewayConfig(
                 // 더 많은 건수로 나눠 적체 소진을 빠르게 한다. 레코드 JSON 약 250B × 2,000 ≈ 0.5MB로
                 // 서버 메시지 한도(2MB, WebSocketConfig.MAX_MESSAGE_BYTES) 안이다. (설계 문서 10장 측정 근거)
                 Integer.parseInt(env.getOrDefault("BATCH_SIZE", "2000")),
-                Integer.parseInt(env.getOrDefault("WINDOW", "8")),
+                // 3 = 실시간 1 + 백필 2. 서버는 한 연결의 묶음을 하나씩 처리하므로 백필을 많이 보내 둬도 빨라지지 않고
+                // 실시간 묶음이 그 뒤에서 기다리는 시간만 늘어난다 (백필 7개일 때 복구 중 실시간 지연 p95 5~11초 실측).
+                // 2개면 서버가 한 묶음을 처리하는 동안 다음 묶음이 이미 도착해 있어 쉬는 틈이 없다.
+                Integer.parseInt(env.getOrDefault("WINDOW", "3")),
                 Long.parseLong(env.getOrDefault("ACK_TIMEOUT_MS", "15000")),
                 Long.parseLong(env.getOrDefault("COMMAND_TIMEOUT_MS", "3000")));
     }
