@@ -32,19 +32,22 @@ public class GatewayPresenceService {
         this.clock = clock;
     }
 
+    // 연결·끊김 때는 적체 값을 지우지 않고 statusFresh만 false로 둔다. 마지막으로 알던 값은 남겨 두되,
+    // 그것이 "지금 값"이 아니라는 표시를 붙이는 것이다 (끊긴 동안 게이트웨이 적체는 계속 늘어난다).
+
     public void connected(String gatewayId) {
         update(gatewayId, v -> new GatewayView(gatewayId, true, clock.getAsLong(), v.bufferedCount(),
-                v.oldestBufferedAgeMs(), v.connectedDevices(), v.droppedCount()));
+                v.oldestBufferedAgeMs(), v.connectedDevices(), v.droppedCount(), false));
     }
 
     public void disconnected(String gatewayId) {
         update(gatewayId, v -> new GatewayView(gatewayId, false, v.lastSeenAt(), v.bufferedCount(),
-                v.oldestBufferedAgeMs(), v.connectedDevices(), v.droppedCount()));
+                v.oldestBufferedAgeMs(), v.connectedDevices(), v.droppedCount(), false));
     }
 
     public void status(String gatewayId, GatewayStatus s) {
         update(gatewayId, v -> new GatewayView(gatewayId, true, clock.getAsLong(), s.bufferedCount(),
-                s.oldestBufferedAgeMs(), s.connectedDevices(), s.droppedCount()));
+                s.oldestBufferedAgeMs(), s.connectedDevices(), s.droppedCount(), true));
     }
 
     public synchronized List<GatewayView> all() {
@@ -54,7 +57,7 @@ public class GatewayPresenceService {
     private void update(String gatewayId, java.util.function.UnaryOperator<GatewayView> change) {
         GatewayView next;
         synchronized (this) {
-            GatewayView prev = views.getOrDefault(gatewayId, new GatewayView(gatewayId, false, 0, 0, 0, 0, 0));
+            GatewayView prev = views.getOrDefault(gatewayId, new GatewayView(gatewayId, false, 0, 0, 0, 0, 0, false));
             next = change.apply(prev);
             views.put(gatewayId, next);
         }

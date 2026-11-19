@@ -96,8 +96,18 @@ function GatewayPanel({ gateways }: { gateways: Gateway[] }) {
             <tr key={g.gatewayId}>
               <td>{g.gatewayId}</td>
               <td className={g.connected ? 'ok' : 'bad'}>{g.connected ? '연결' : `끊김 (${fmtTime(g.lastSeenAt)}부터)`}</td>
-              <td className={g.bufferedCount > 1000 ? 'warn' : ''}>{g.bufferedCount.toLocaleString()}</td>
-              <td>{fmtMs(g.oldestBufferedAgeMs)}</td>
+              {g.statusFresh ? (
+                <>
+                  <td className={g.bufferedCount > 1000 ? 'warn' : ''}>{g.bufferedCount.toLocaleString()}</td>
+                  <td>{fmtMs(g.oldestBufferedAgeMs)}</td>
+                </>
+              ) : (
+                // 끊긴 동안 게이트웨이 적체는 계속 늘지만 서버는 볼 수 없다. 끊기기 전 숫자를 보여 주면
+                // 적체가 거의 없는 것처럼 오해하므로, 마지막으로 안 값임을 밝혀 적는다.
+                <td colSpan={2} className="warn">
+                  {g.connected ? '확인 중 (첫 상태 보고 대기)' : `알 수 없음 · 끊기기 전 ${g.bufferedCount.toLocaleString()}건`}
+                </td>
+              )}
               <td>{g.connectedDevices}</td>
               <td className={g.droppedCount ? 'bad' : ''}>{g.droppedCount}</td>
             </tr>

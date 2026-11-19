@@ -31,6 +31,8 @@ export interface Gateway {
   oldestBufferedAgeMs: number
   connectedDevices: number
   droppedCount: number
+  /** 적체 값이 지금 연결에서 받은 보고인가. false면 끊기기 전 값이라 화면에 숫자를 그대로 보이지 않는다 */
+  statusFresh: boolean
 }
 
 export interface Command {

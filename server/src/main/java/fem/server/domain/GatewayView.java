@@ -8,6 +8,9 @@ package fem.server.domain;
  * @param bufferedCount    게이트웨이 디스크에 쌓인 미전송 건수 (마지막 보고 기준)
  * @param oldestBufferedAgeMs 가장 오래된 미전송 레코드의 나이
  * @param droppedCount     버퍼 상한 초과로 버려진 누적 건수. 0보다 크면 유실 알람
+ * @param statusFresh      적체 값이 "지금 연결에서 받은 상태 보고"인가. 끊긴 동안이나 재연결 직후(첫 보고 전)에는
+ *                         false다. 이때 적체 값은 끊기기 전 보고라 실제(계속 쌓이는 중)와 다르므로 화면은 숫자 대신
+ *                         "알 수 없음"/"확인 중"을 보여 준다
  */
 public record GatewayView(
         String gatewayId,
@@ -16,6 +19,7 @@ public record GatewayView(
         long bufferedCount,
         long oldestBufferedAgeMs,
         int connectedDevices,
-        long droppedCount
+        long droppedCount,
+        boolean statusFresh
 ) {
 }
