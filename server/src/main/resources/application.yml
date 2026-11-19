@@ -13,3 +13,13 @@ spring:
 
 management:
   endpoints.web.exposure.include: health,metrics,prometheus
+
+fem:
+  # 게이트웨이 자격 증명. 설치 시 발급된 토큰이라고 가정한다 (설계 가정 6). 운영에서는 비밀 저장소에서 주입
+  gateways:
+    gw-a:
+      token: ${GW_A_TOKEN:gw-a-secret}
+      factory: A
+    gw-b:
+      token: ${GW_B_TOKEN:gw-b-secret}
+      factory: B
