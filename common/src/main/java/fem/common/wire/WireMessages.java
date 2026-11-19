@@ -43,6 +43,7 @@ public final class WireMessages {
             long bufferedCount,       // 아직 ack 받지 못한 레코드 수
             long oldestBufferedAgeMs, // 가장 오래된 미전송 레코드의 나이
             int connectedDevices,     // 최근 5초 안에 데이터가 들어온 설비 수
+            long droppedCount,        // 버퍼 상한 초과로 버린 누적 건수 (게이트웨이 기동 이후). 0이 아니면 유실 알람
             long sentAt
     ) {
     }

@@ -31,7 +31,7 @@ class WireCodecTest {
     void every_message_type_round_trips() {
         List<Object> messages = List.of(
                 new Ack(42),
-                new GatewayStatus("gw-a", 10, 500, 600, 99),
+                new GatewayStatus("gw-a", 10, 500, 600, 3, 99),
                 new Command("c-1", "A-0001", CommandAction.STOP, 1, 2),
                 new CommandResult("c-1", "A-0001", CommandOutcome.APPLIED, "ok", 3));
 

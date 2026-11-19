@@ -200,7 +200,7 @@ class UplinkTest {
 
     @Test
     void status_is_sent_only_when_connected() {
-        GatewayStatus status = new GatewayStatus("gw-a", 0, 0, 0, 0);
+        GatewayStatus status = new GatewayStatus("gw-a", 0, 0, 0, 0, 0);
         assertFalse(uplink.sendIfConnected(status));
 
         FakeConnection c = new FakeConnection();
