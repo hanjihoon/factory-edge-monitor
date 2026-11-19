@@ -71,7 +71,32 @@ flowchart LR
 5. 서버 → UI: 설비 현재 상태가 바뀌면 WebSocket으로 전달
 
 ### 명령 흐름
-TODO (5단계)
+```mermaid
+sequenceDiagram
+  participant UI as 관제 UI
+  participant S as 서버 CommandService
+  participant G as 게이트웨이 CommandService
+  participant D as 설비
+  UI->>S: POST /api/commands {commandId, deviceId, action}
+  Note over S: commandId 이미 있으면 기존 명령 반환 (멱등)<br/>감사 로그 REQUESTED
+  S->>G: COMMAND (commandId, attempt=1) — 게이트웨이가 연 WebSocket을 거꾸로 탐
+  G->>D: MQTT command 토픽 / Modbus 제어 레지스터 쓰기
+  D-->>G: command/ack / 상태 레지스터 재확인
+  G-->>S: COMMAND_RESULT (APPLIED 등)
+  Note over S: 첫 결과만 반영 → SUCCEEDED, 감사 로그 RESULT
+  S-->>UI: 명령 상태 변경 (UI WebSocket)
+  Note over S,G: 5초 안에 결과가 없으면 같은 commandId로 재전송 (최대 3회)<br/>게이트웨이는 commandId로, 설비는 commandId/목표 상태로 중복을 거름
+```
+
+| 단계 | 멱등을 지키는 장치 |
+|---|---|
+| UI → 서버 | commandId를 UI가 만든다. 더블클릭·HTTP 재전송은 같은 commandId라 명령이 하나만 생긴다 |
+| 서버 → 게이트웨이 재시도 | 같은 commandId로만 재전송. 결과는 첫 번째만 반영하고 나머지는 감사 로그에 `DUPLICATE_RESULT_IGNORED` |
+| 게이트웨이 | commandId별 결과를 기억해 재실행 없이 재전송. 단 `DEVICE_UNREACHABLE`은 기억하지 않아 다시 실행 |
+| 설비 | MQTT: commandId별 첫 결과를 기억. Modbus: 이미 목표 상태면 쓰지 않음 (`ALREADY_IN_STATE`) |
+
+명령 상태: `PENDING`(게이트웨이 미연결) → `SENT` → `SUCCEEDED`(APPLIED, ALREADY_IN_STATE) / `FAILED`(UNKNOWN_DEVICE) / `TIMED_OUT`(3회 시도 후).
+감사 로그(`command_audit`)는 추가만 하며 REQUESTED, SENT, SEND_FAILED, RESULT, DUPLICATE_RESULT_IGNORED, RETRY, TIMED_OUT을 행위자(사용자/system/게이트웨이)와 함께 남긴다.
 
 ## 5. 구성 요소별 책임
 | 구성 요소 | 책임 | 기술 | 선택 이유 |
