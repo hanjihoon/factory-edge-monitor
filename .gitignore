@@ -2,6 +2,7 @@
 build/
 out/
 .idea/
+.vscode/
 *.iml
 .DS_Store
 # 게이트웨이 로컬 버퍼 (컨테이너 볼륨으로 관리)
