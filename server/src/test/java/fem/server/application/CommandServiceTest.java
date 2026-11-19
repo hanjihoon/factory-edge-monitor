@@ -130,6 +130,20 @@ class CommandServiceTest {
     }
 
     @Test
+    void result_arriving_after_timeout_is_recorded_as_late_and_corrects_status() {
+        service.issue("c-1", "A-0001", CommandAction.STOP, "operator");
+        for (int i = 0; i < 3; i++) {
+            clock.addAndGet(CommandService.ACK_TIMEOUT_MS);
+            service.checkTimeouts();
+        }
+
+        service.onResult("gw-a", result("c-1", CommandOutcome.APPLIED));
+
+        assertEquals(Status.SUCCEEDED, repo.find("c-1").orElseThrow().status());
+        assertEquals("LATE_RESULT", repo.eventsOf("c-1").getLast());
+    }
+
+    @Test
     void late_result_after_retry_still_completes_once() {
         service.issue("c-1", "A-0001", CommandAction.STOP, "operator");
         clock.addAndGet(CommandService.ACK_TIMEOUT_MS);

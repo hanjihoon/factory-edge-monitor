@@ -98,6 +98,13 @@ public class CommandService implements IssueCommandUseCase, CommandResultUseCase
                 log.warn("{} sent result for unknown command {}", gatewayId, result.commandId());
                 return;
             }
+            if (result.outcome() == null) {
+                // 서버가 모르는 결과 값 (코덱이 null로 읽음, 새 버전 게이트웨이). 상태는 바꾸지 않고 기록만 남긴다.
+                // 명령은 재시도·시간 초과 규칙대로 진행된다
+                audit(cmd, "UNKNOWN_RESULT_IGNORED", gatewayId, String.valueOf(result.detail()));
+                return;
+            }
+            boolean late = cmd.status() == RemoteCommand.Status.TIMED_OUT;
             boolean changed = cmd.applyResult(result.outcome(), result.detail(), clock.getAsLong());
             if (!changed) {
                 // 재시도 때문에 같은 명령의 결과가 두 번 올 수 있다. 처음 것만 반영하고 나머지는 기록만 한다
@@ -105,7 +112,8 @@ public class CommandService implements IssueCommandUseCase, CommandResultUseCase
                 return;
             }
             repository.update(cmd);
-            audit(cmd, "RESULT", gatewayId, result.outcome() + ": " + result.detail());
+            // LATE_RESULT: 시간 초과로 끝냈던 명령의 결과가 뒤늦게 와서 바로잡았다는 기록
+            audit(cmd, late ? "LATE_RESULT" : "RESULT", gatewayId, result.outcome() + ": " + result.detail());
             live.commandChanged(cmd);
         } finally {
             lock.unlock();

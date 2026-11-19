@@ -83,9 +83,17 @@ public final class RemoteCommand {
     /**
      * 게이트웨이 결과 반영.
      *
-     * @return 상태가 바뀌었으면 true. 이미 끝난 명령에 온 결과(재시도로 생긴 중복 응답)는 false
+     * @return 상태가 바뀌었으면 true. 이미 끝난 명령에 온 결과(재시도로 생긴 중복 응답)는 false.
+     *         단 TIMED_OUT 뒤에 온 확정 결과는 반영한다 (늦은 결과)
      */
     public boolean applyResult(CommandOutcome result, String resultDetail, long now) {
+        // 시간 초과는 "결과를 모른다"는 뜻이지 "실패"가 아니다. 회선이 느려 결과가 늦게 왔다면 설비에는 이미
+        // 적용된 것이므로, 그 사실로 바로잡는다 (안 그러면 화면은 '시간 초과'인데 설비는 멈춰 있는 상태가 된다).
+        // DEVICE_UNREACHABLE은 확정 결과가 아니라 재시도 신호라서 끝난 명령을 바꾸지 않는다.
+        if (status == Status.TIMED_OUT && result != CommandOutcome.DEVICE_UNREACHABLE) {
+            finish(result == CommandOutcome.UNKNOWN_DEVICE ? Status.FAILED : Status.SUCCEEDED, result, resultDetail, now);
+            return true;
+        }
         if (status.terminal()) return false;
         switch (result) {
             case APPLIED, ALREADY_IN_STATE -> finish(Status.SUCCEEDED, result, resultDetail, now);

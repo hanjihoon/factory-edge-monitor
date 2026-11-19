@@ -63,6 +63,29 @@ class RemoteCommandTest {
     }
 
     @Test
+    void late_result_after_timeout_corrects_the_status() {
+        RemoteCommand c = cmd();
+        c.markSent(0);
+        c.markTimedOut(15_000);
+
+        assertTrue(c.applyResult(CommandOutcome.APPLIED, "stopped", 16_000), "device did apply it, just late");
+
+        assertEquals(Status.SUCCEEDED, c.status());
+        assertEquals(16_000, c.completedAt());
+        assertFalse(c.applyResult(CommandOutcome.APPLIED, "again", 17_000), "only the first late result counts");
+    }
+
+    @Test
+    void late_unreachable_does_not_reopen_a_timed_out_command() {
+        RemoteCommand c = cmd();
+        c.markSent(0);
+        c.markTimedOut(15_000);
+
+        assertFalse(c.applyResult(CommandOutcome.DEVICE_UNREACHABLE, "no ack", 16_000));
+        assertEquals(Status.TIMED_OUT, c.status());
+    }
+
+    @Test
     void unreachable_result_makes_retry_due_immediately() {
         RemoteCommand c = cmd();
         c.markSent(1_000);
