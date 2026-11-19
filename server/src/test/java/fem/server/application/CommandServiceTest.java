@@ -49,7 +49,7 @@ class CommandServiceTest {
             },
             new FemProperties(Map.of(
                     "gw-a", new FemProperties.GatewayCredential("t", "A"),
-                    "gw-b", new FemProperties.GatewayCredential("t", "B"))),
+                    "gw-b", new FemProperties.GatewayCredential("t", "B")), Map.of()),
             clock::get);
 
     private CommandResult result(String id, CommandOutcome outcome) {

@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class GatewayAuthServiceTest {
 
     private final GatewayAuthService auth = new GatewayAuthService(new FemProperties(Map.of(
-            "gw-a", new FemProperties.GatewayCredential("secret-a", "A"))));
+            "gw-a", new FemProperties.GatewayCredential("secret-a", "A")), Map.of()));
 
     @Test
     void valid_token_yields_identity_with_factory() {

@@ -2,6 +2,7 @@ package fem.server.config;
 
 import fem.server.adapter.in.gateway.GatewayHandshakeInterceptor;
 import fem.server.adapter.in.gateway.GatewayWebSocketHandler;
+import fem.server.adapter.in.ui.UiWebSocketHandler;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -23,15 +24,20 @@ public class WebSocketConfig implements WebSocketConfigurer {
 
     private final GatewayWebSocketHandler gatewayHandler;
     private final GatewayHandshakeInterceptor gatewayAuth;
+    private final UiWebSocketHandler uiHandler;
 
-    public WebSocketConfig(GatewayWebSocketHandler gatewayHandler, GatewayHandshakeInterceptor gatewayAuth) {
+    public WebSocketConfig(GatewayWebSocketHandler gatewayHandler, GatewayHandshakeInterceptor gatewayAuth,
+                           UiWebSocketHandler uiHandler) {
         this.gatewayHandler = gatewayHandler;
         this.gatewayAuth = gatewayAuth;
+        this.uiHandler = uiHandler;
     }
 
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
         registry.addHandler(gatewayHandler, "/ws/gateway").addInterceptors(gatewayAuth);
+        // UI는 nginx가 같은 주소로 프록시하므로(설계 결정 12) 브라우저 Origin 검사는 기본값(같은 출처만)을 그대로 쓴다
+        registry.addHandler(uiHandler, "/ws/ui").addInterceptors(uiHandler);
     }
 
     @Bean

@@ -23,3 +23,11 @@ fem:
     gw-b:
       token: ${GW_B_TOKEN:gw-b-secret}
       factory: B
+  # 관제 사용자 (설계 결정 13). 시연용 고정 계정. 운영에서는 사내 계정 연동
+  users:
+    operator:
+      password: ${OPERATOR_PASSWORD:operator123}
+      role: OPERATOR
+    viewer:
+      password: ${VIEWER_PASSWORD:viewer123}
+      role: VIEWER
