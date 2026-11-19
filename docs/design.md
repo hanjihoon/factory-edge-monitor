@@ -254,13 +254,14 @@ JWT 대신 서버 메모리 세션을 쓴 이유: 서버 1대 구성이라 상�
 ## 8. 장애 시나리오
 | 상황 | 감지 방법 | 대응 | 복구 절차 | 검증 방법·결과 |
 |---|---|---|---|---|
-| 연결 끊김 (회선) | WebSocket 종료·전송 실패, 또는 ack 15초 무응답 | 수집은 계속, SQLite outbox에 적체 | 백오프 재연결 → 마지막 ack 다음부터 재전송 | `UplinkTest` 재연결·시간 초과 케이스. 10분 단절 측정은 7단계 |
+| 연결 끊김 (회선) | WebSocket 종료·전송 실패, 또는 ack 15초 무응답 | 수집은 계속, SQLite outbox에 적체 | 백오프 재연결 → 마지막 ack 다음부터 재전송 | `UplinkTest` 재연결·시간 초과 케이스, `GatewayUplinkEndToEndTest` ack 유실 후 재전송. 10분 단절은 `measure.sh outage` (**미측정**, 10장) |
 | 브로커 → 게이트웨이 구간 | — | MQTT 수동 ack: 디스크 커밋 후 PUBACK. 영속 세션으로 게이트웨이 정지 중 메시지 브로커 보관 | 재연결 시 브로커가 미확인 메시지 재전송 | `MqttCollectorTest`, `IngestWriterTest` |
 | 게이트웨이 재시작 | — | outbox가 디스크에 남음 (WAL, synchronous=FULL) | 기동 시 남은 것부터 전송. AUTOINCREMENT라 id가 되돌아가지 않음 | `SqliteOutboxTest` 재시작·id 비재사용 |
 | 디스크 버퍼 가득 참 | 행 수 > 상한(6시간분) | 가장 오래된 것부터 버리고 droppedCount 증가 | 서버·UI에 유실 알람 | `SqliteOutboxTest` 상한 초과 |
-| 메시지 중복 | 설비 재발행, 재전송, Modbus 중복 읽기 | Modbus는 게이트웨이에서 이미 본 seq 제거. 나머지는 서버가 (deviceId, seq) 유니크 키로 제거 | — | `ModbusNormalizerTest`, 서버는 4단계 |
-| 순서 뒤바뀜 | 같은 설비의 seq가 줄어듦 | 저장은 그대로(시계열은 측정 시각 기준), 현재 상태는 seq가 클 때만 갱신 | — | 4단계 |
-| 서버 재시작 | 연결 끊김과 같음 | 커밋 전 묶음은 ack가 안 나가므로 게이트웨이가 재전송 | 같은 절차 | 4단계 |
+| 메시지 중복 | 설비 재발행, 재전송, Modbus 중복 읽기 | Modbus는 게이트웨이에서 이미 본 seq 제거. 나머지는 서버가 `telemetry_dedup`의 (deviceId, seq) 기본 키로 제거 | — | `ModbusNormalizerTest`, `IngestServiceTest` 재전송 묶음, `GatewayUplinkEndToEndTest` |
+| 순서 뒤바뀜 | 같은 설비의 seq가 줄어듦 | 저장은 그대로(시계열은 측정 시각 기준), 현재 상태는 seq가 클 때만 갱신 | — | `LatestPerDeviceTest`, `IngestServiceTest` 늦게 온 옛 기록 |
+| 서버 재시작 | 연결 끊김과 같음 | 커밋 전 묶음은 ack가 안 나가므로 게이트웨이가 재전송 | 같은 절차 | `IngestServiceTest` 실패 시 롤백·ack 없음 |
+| 공장 내부 브로커 다운 | 게이트웨이 상태 보고의 활성 설비 수가 0으로 떨어짐 (서버 연결은 유지) | 게이트웨이는 브로커 재연결을 계속 시도. 전송·상태 보고는 별도 스레드라 멈추지 않아 디스크 미전송분은 계속 올라간다. 이 동안 명령은 DEVICE_UNREACHABLE → 서버 재시도 | 브로커 복구 시 영속 세션으로 보관 메시지 수신. 설비 측 QoS 1 재발행분은 서버 중복 제거 | 브로커·서버 없이 게이트웨이를 실행해 두 재시도가 동시에 도는 것 확인 (수동). 브로커 연동은 **미검증** |
 
 ## 9. UI 설계
 한 화면 대시보드. 운영자가 "어디가 끊겼나 → 어느 설비가 이상한가 → 조치 → 결과 확인"을 화면 이동 없이 하도록 배치했다.
