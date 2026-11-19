@@ -30,6 +30,8 @@ services:
       DB_URL: jdbc:postgresql://timescaledb:5432/fem
       DB_USER: fem
       DB_PASSWORD: fem
+      # 한 게이트웨이의 묶음을 동시에 저장하는 수 (1 = 예전처럼 하나씩). 비교 측정: INGEST_PARALLELISM=1 docker compose up -d server
+      FEM_INGEST_PARALLELISM: ${INGEST_PARALLELISM:-4}
     ports: [ "8081:8080" ]           # 측정·디버깅용 직접 접근. 관제 UI는 web(8080)으로
     depends_on:
       timescaledb: { condition: service_healthy }
@@ -53,7 +55,8 @@ services:
   # 공장 A 내부 MQTT 브로커
   mosquitto:
     image: eclipse-mosquitto:2
-    volumes: [ "./infra/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro" ]
+    # mosquitto-data: persistence 스냅숏 (게이트웨이 구독·대기열). 컨테이너를 새로 만들어도 구독이 남는다
+    volumes: [ "./infra/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro", "mosquitto-data:/mosquitto/data" ]
     networks: [ factory-a ]
 
   # 설비 1,000대 (A: MQTT 600, B: Modbus 400). 두 공장망에 모두 붙는다.
@@ -79,6 +82,7 @@ services:
       SOURCE: mqtt
       MQTT_URL: tcp://mosquitto:1883
       SERVER_WS_URL: ws://toxiproxy:18081/ws/gateway
+      WINDOW: ${UPLINK_WINDOW:-3}       # ack 없이 동시에 보내 둘 수 있는 묶음 수 (실시간 1 + 백필 나머지)
       BUFFER_PATH: /data/buffer.db
     volumes: [ "gw-a-data:/data" ]
     depends_on: [ mosquitto, toxiproxy ]
@@ -95,6 +99,7 @@ services:
       MODBUS_BASE_PORT: 5020
       MODBUS_DEVICES: 400
       SERVER_WS_URL: ws://toxiproxy:18082/ws/gateway
+      WINDOW: ${UPLINK_WINDOW:-3}       # ack 없이 동시에 보내 둘 수 있는 묶음 수 (실시간 1 + 백필 나머지)
       BUFFER_PATH: /data/buffer.db
     volumes: [ "gw-b-data:/data" ]
     depends_on: [ emulator, toxiproxy ]
@@ -110,3 +115,4 @@ volumes:
   db-data:
   gw-a-data:   # 게이트웨이 디스크 버퍼. 컨테이너를 재시작해도 남는다
   gw-b-data:
+  mosquitto-data:   # 공장 A 브로커 스냅숏

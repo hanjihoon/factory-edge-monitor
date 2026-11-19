@@ -28,3 +28,16 @@ FROM (SELECT factory_id, device_id, min(seq) AS min_seq, max(seq) AS max_seq, co
       FROM telemetry WHERE device_ts BETWEEN :from AND :to
       GROUP BY factory_id, device_id) per_device
 GROUP BY factory_id ORDER BY factory_id;
+
+\echo '== 5. 지연 예산: 어느 구간에서 시간이 드나 (공장별, ms)'
+\echo '   설비→게이트웨이 = gateway_ts − device_ts: MQTT는 에뮬레이터 지연 주입(0~300ms) + 브로커 + 게이트웨이 수신.'
+\echo '                      Modbus는 폴링 시각을 측정 시각으로 쓰므로 0이다'
+\echo '   게이트웨이→DB   = server_ts − gateway_ts: 디스크 버퍼 기록 + 전송 대기 + 회선 + 서버 저장 시작까지'
+SELECT factory_id,
+       round(percentile_cont(0.50) WITHIN GROUP (ORDER BY extract(epoch FROM gateway_ts - device_ts) * 1000)::numeric) AS dev_gw_p50,
+       round(percentile_cont(0.95) WITHIN GROUP (ORDER BY extract(epoch FROM gateway_ts - device_ts) * 1000)::numeric) AS dev_gw_p95,
+       round(percentile_cont(0.50) WITHIN GROUP (ORDER BY extract(epoch FROM server_ts - gateway_ts) * 1000)::numeric) AS gw_db_p50,
+       round(percentile_cont(0.95) WITHIN GROUP (ORDER BY extract(epoch FROM server_ts - gateway_ts) * 1000)::numeric) AS gw_db_p95,
+       round(percentile_cont(0.99) WITHIN GROUP (ORDER BY extract(epoch FROM server_ts - gateway_ts) * 1000)::numeric) AS gw_db_p99
+FROM telemetry WHERE device_ts BETWEEN :from AND :to
+GROUP BY factory_id ORDER BY factory_id;

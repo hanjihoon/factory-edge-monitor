@@ -3,7 +3,7 @@
 #
 #   scripts/measure.sh steady [초]     정상 상태 처리량·지연·중복·유실 (기본 120초)
 #   scripts/measure.sh outage [초]     두 공장 회선을 끊었다가 복구 → 복구 시간, 유실 0건 확인 (기본 600초 = 10분)
-#   scripts/measure.sh fault <서비스> [초]  구성 요소를 강제 종료(kill -9)했다 다시 띄움 → 회복 시간, 유실·중복 (기본 30초)
+#   scripts/measure.sh fault <서비스>[,<서비스>] [초]  구성 요소를 강제 종료(kill -9)했다 다시 띄움 → 회복 시간, 유실·중복 (기본 30초)
 #
 # 필요한 것: bash, curl, docker compose. (jq·python 없이 동작하도록 작성)
 set -euo pipefail
@@ -108,23 +108,28 @@ case "${1:-steady}" in
     docker compose exec -T timescaledb psql -U fem -d fem -v restore="'$to'" < "$(dirname "$0")/recovery.sql"
     ;;
   fault)
-    # 회선이 아닌 구성 요소를 강제 종료(kill -9)했다가 다시 띄운다. 정상 종료가 아니라 전원이 나간 것과 같다.
-    #   gateway-a  MQTT 게이트웨이. 디스크 커밋 후 PUBACK + 브로커 영속 세션이면 유실 0이어야 한다
+    # 회선이 아닌 구성 요소를 강제 종료(SIGKILL)했다가 다시 띄운다. 프로세스를 죽이는 것이지 전원을 끊는 것은 아니다
+    # (호스트 운영체제는 살아 있어 디스크 캐시가 남는다. 진짜 전원 차단 시험은 하지 않았다 → 설계 문서 12장).
+    #   gateway-a  MQTT 게이트웨이. 디스크 커밋 후 PUBACK + 브로커 영속 세션. 정지 허용 시간(브로커 대기열) 안이면 유실 0
     #   gateway-b  Modbus 게이트웨이. 꺼진 동안은 아무도 폴링하지 않으므로 그 사이 샘플은 수집 단계에서 빠진다 (예상된 한계)
     #   server     커밋 전 묶음은 ack가 안 나갔으므로 재전송 → 유실 0, 중복 0이어야 한다
     #   timescaledb  서버가 저장에 실패하면 ack를 안 보낸다 → 게이트웨이에 쌓였다가 재전송
     #   mosquitto  공장 A 브로커. 꺼진 동안 설비(에뮬레이터)의 발행이 실패한다 → 설비 쪽 손실 (설비가 버퍼를 갖는지에 달림)
-    svc=${2:?"usage: $0 fault <gateway-a|gateway-b|server|timescaledb|mosquitto> [down_seconds]"}
+    #   gateway-a,mosquitto  정전 흉내: 둘을 동시에 죽인다. 브로커 메모리에 있던 "설비에는 받았다고 했지만
+    #                        게이트웨이가 아직 가져가지 않은" 메시지의 양을 추정한다
+    svcs=${2:?"usage: $0 fault <service>[,<service>...] [down_seconds]"}
     down=${3:-30}
+    IFS=',' read -r -a svc_list <<< "$svcs"
     warmup=20
     log "워밍업 ${warmup}초"; sleep $warmup
     from=$(now_iso)
     sleep 5
-    log "$svc 강제 종료 (SIGKILL) — ${down}초 뒤 다시 띄운다"
-    docker compose kill -s KILL "$svc" >/dev/null 2>&1
+    log "${svc_list[*]} 강제 종료 (SIGKILL) — ${down}초 뒤 다시 띄운다"
+    t_kill_ms=$(date +%s%3N)
+    docker compose kill -s KILL "${svc_list[@]}" >/dev/null 2>&1
     sleep "$down"
-    docker compose start "$svc" >/dev/null 2>&1; t_start=$(date +%s)
-    log "$svc 기동. 모든 게이트웨이가 새 상태 보고에서 적체 해소(가장 오래된 미확인 < ${DRAINED_AGE_MS}ms)를 보고할 때까지 잰다"
+    docker compose start "${svc_list[@]}" >/dev/null 2>&1; t_start=$(date +%s)
+    log "기동. 모든 게이트웨이가 새 상태 보고에서 적체 해소(가장 오래된 미확인 < ${DRAINED_AGE_MS}ms)를 보고할 때까지 잰다"
     sleep 10
     deadline=$(( t_start + 600 ))
     while :; do
@@ -139,12 +144,45 @@ case "${1:-steady}" in
       [ "$n_ok" -ge 2 ] && break
       sleep 1
     done
-    log "회복 시간 ($svc 기동 → 두 게이트웨이 적체 해소): $(( $(date +%s) - t_start ))초 / 중단 ${down}초"
+    log "회복 시간 (기동 → 두 게이트웨이 적체 해소): $(( $(date +%s) - t_start ))초 / 중단 ${down}초"
     # 기동 뒤 30초까지 측정된 데이터를 포함해야 재기동 경계의 빈 번호를 잡는다
     end=$(( t_start + 30 )); now=$(date +%s); [ "$now" -ge $(( end + 10 )) ] || sleep $(( end + 10 - now ))
     to=$(date -u -d "@$end" +"%Y-%m-%d %H:%M:%S+00")
+    # 게이트웨이 적체 해소만 보고 바로 집계하면 안 된다. 게이트웨이를 다시 띄우면 브로커에 쌓여 있던 메시지가
+    # 그때부터 넘어오는데, 게이트웨이 디스크 버퍼는 금방 비어서 "해소"로 보인다. 이때 집계하면 아직 안 온
+    # 최신 메시지가 빠져 빈 번호가 안 보이고 유실 0으로 잘못 나온다 (게이트웨이 200초 정지에서 실제로 그랬다).
+    # 그래서 구간 저장 건수가 10초 동안 늘지 않을 때까지 기다린다.
+    prev=-1
+    for _ in $(seq 1 120); do
+      cur=$(docker compose exec -T timescaledb psql -U fem -d fem -Atc \
+            "SELECT count(*) FROM telemetry WHERE device_ts BETWEEN '$from' AND '$to'" 2>/dev/null || echo -1)
+      [ "$cur" = "$prev" ] && break
+      prev=$cur; sleep 10
+    done
+    log "구간 저장 건수 ${cur}건에서 멈춤 → 집계"
     report "$from" "$to" | sed -n '/== 3/,$p'
+    case ",$svcs," in *,mosquitto,*)
+      # 설비는 1초마다 seq를 하나씩 올려 발행한다. 설비마다 "강제 종료 전 마지막으로 저장된 레코드"부터 종료 시각까지
+      # 몇 초가 비었는지 보면, 종료 직전에 발행됐지만 저장되지 못한 건수를 추정할 수 있다.
+      # 이것이 정전 때 브로커 메모리(또는 게이트웨이로 가는 중)에서 사라지는 양이다. 지연 주입(0~300ms) 때문에 ±1건 오차
+      echo "== 6. 종료 직전에 발행됐지만 저장되지 못한 건수 추정 (공장 A, 브로커 메모리 구간)"
+      docker compose exec -T timescaledb psql -U fem -d fem -v kill="$t_kill_ms" <<'SQL'
+WITH last_before AS (
+    SELECT device_id, max(device_ts) AS ts
+    FROM telemetry
+    WHERE factory_id = 'A' AND device_ts <= to_timestamp(:kill / 1000.0)
+      AND device_ts > to_timestamp(:kill / 1000.0) - INTERVAL '2 minutes'
+    GROUP BY device_id
+), per_device AS (
+    SELECT floor(extract(epoch FROM to_timestamp(:kill / 1000.0) - ts))::int AS lost FROM last_before
+)
+SELECT count(*) AS devices, sum(lost) AS est_lost_before_kill,
+       round(avg(lost), 2) AS avg_per_device, max(lost) AS max_per_device
+FROM per_device;
+SQL
+      ;;
+    esac
     ;;
   *)
-    echo "usage: $0 steady [seconds] | outage [seconds] | fault <service> [down_seconds]"; exit 1 ;;
+    echo "usage: $0 steady [seconds] | outage [seconds] | fault <service>[,<service>...] [down_seconds]"; exit 1 ;;
 esac
