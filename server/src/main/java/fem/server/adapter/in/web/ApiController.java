@@ -2,12 +2,14 @@ package fem.server.adapter.in.web;
 
 import fem.common.wire.WireMessages.CommandAction;
 import fem.server.application.GatewayPresenceService;
+import fem.server.application.KpiService;
 import fem.server.application.UserAuthService;
 import fem.server.application.port.in.IssueCommandUseCase;
 import fem.server.application.port.out.TelemetryRepository;
 import fem.server.domain.AuditEntry;
 import fem.server.domain.DeviceSnapshot;
 import fem.server.domain.GatewayView;
+import fem.server.domain.KpiReport;
 import fem.server.domain.UserSession;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -29,9 +31,11 @@ public class ApiController {
     private final TelemetryRepository telemetry;
     private final GatewayPresenceService gateways;
     private final IssueCommandUseCase commands;
+    private final KpiService kpi;
 
     public ApiController(UserAuthService auth, TelemetryRepository telemetry,
-                         GatewayPresenceService gateways, IssueCommandUseCase commands) {
+                         GatewayPresenceService gateways, IssueCommandUseCase commands, KpiService kpi) {
+        this.kpi = kpi;
         this.auth = auth;
         this.telemetry = telemetry;
         this.gateways = gateways;
@@ -84,6 +88,12 @@ public class ApiController {
     @GetMapping("/gateways")
     public List<GatewayView> gateways() {
         return gateways.all();
+    }
+
+    /** 최근 N시간(기본 24, 최대 168) 가동률. 조회자도 볼 수 있다 */
+    @GetMapping("/kpi")
+    public KpiReport kpi(@RequestParam(defaultValue = "24") int hours) {
+        return kpi.report(hours);
     }
 
     @GetMapping("/commands")

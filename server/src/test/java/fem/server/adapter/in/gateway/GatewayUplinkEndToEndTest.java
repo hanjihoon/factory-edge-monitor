@@ -64,6 +64,18 @@ class GatewayUplinkEndToEndTest {
     }
 
     /** JDBC 구현 대신 메모리 구현을 쓴다 (같은 중복 제거 규칙) */
+    /** KPI는 DB 연속 집계라 이 테스트(DB 없음)에서는 빈 결과로 대신한다 */
+    @TestBean
+    fem.server.application.port.out.KpiRepository kpiRepository;
+
+    static fem.server.application.port.out.KpiRepository kpiRepository() {
+        return new fem.server.application.port.out.KpiRepository() {
+            public java.util.List<fem.server.domain.KpiReport.FactoryKpi> byFactory(java.time.Instant f, java.time.Instant t) { return java.util.List.of(); }
+            public java.util.List<fem.server.domain.KpiReport.HourPoint> hourly(java.time.Instant f, java.time.Instant t) { return java.util.List.of(); }
+            public java.util.List<fem.server.domain.KpiReport.DeviceKpi> worstDevices(java.time.Instant f, java.time.Instant t, int n) { return java.util.List.of(); }
+        };
+    }
+
     @TestBean
     TelemetryRepository repository;
 
