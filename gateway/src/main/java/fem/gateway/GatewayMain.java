@@ -53,6 +53,7 @@ public final class GatewayMain {
 
         List<AutoCloseable> closeables = new ArrayList<>();
         CommandExecutor executor;
+        CollectorStart startCollector; // 수집 시작은 맨 마지막에 한다 (아래 설명)
         if (cfg.source().equals("mqtt")) {
             MqttCollector collector = new MqttCollector(cfg.mqttUrl(), cfg.gatewayId(), cfg.factoryId(),
                     new MqttNormalizer(cfg.factoryId(), codec), ingest, activity, System::currentTimeMillis);
@@ -60,21 +61,26 @@ public final class GatewayMain {
             collector.onCommandAck(mqttExec::onAck);
             executor = mqttExec;
             closeables.add(collector);
-            startThread("ingest", ingest); // 수집 시작 전에 디스크 기록기를 먼저 띄운다
-            collector.start();
+            startCollector = collector::start;
         } else {
             var lines = ModbusCollector.layout(cfg.modbusHost(), cfg.modbusBasePort(), cfg.modbusDevices());
             ModbusCollector collector = new ModbusCollector(lines, new ModbusNormalizer(cfg.factoryId(), cfg.modbusBasePort()),
                     ingest, activity, System::currentTimeMillis, cfg.modbusPollMs());
             executor = new ModbusCommandExecutor(cfg.factoryId(), lines);
             closeables.add(collector);
-            startThread("ingest", ingest);
-            collector.start();
+            startCollector = collector::start;
         }
         CommandService commandService = new CommandService(executor, uplink::sendIfConnected, System::currentTimeMillis);
         commands.set(commandService);
         closeables.add(commandService);
 
+        // 시작 순서: 디스크 기록기 → 서버 전송·상태 보고 → 수집.
+        // MQTT 수집 시작은 브로커에 붙을 때까지 기다린다(무한 재시도). 수집을 먼저 시작하면
+        // 브로커가 죽은 채로 게이트웨이가 재시작됐을 때 전송 스레드가 뜨지 않아서
+        //  - 디스크에 남아 있던 미전송분이 브로커가 살아날 때까지 서버로 안 가고
+        //  - 서버에는 "게이트웨이 끊김"으로만 보여 회선 장애와 구분이 안 된다.
+        // 전송을 먼저 띄우면 서버는 "연결됨, 활성 설비 0"을 받아 공장 내부 문제임을 알 수 있다.
+        startThread("ingest", ingest);
         startThread("uplink", uplink);
         startThread("connector", new WebSocketConnector(cfg.serverUri(), cfg.gatewayId(), cfg.token(), uplink,
                 new Backoff(500, 30_000, new SplittableRandom())));
@@ -98,7 +104,15 @@ public final class GatewayMain {
             }
             done.countDown();
         }));
+        // 종료 훅을 먼저 걸어 두고 수집을 시작한다. 브로커를 기다리는 중에 종료 신호가 와도 버퍼를 닫고 끝난다.
+        startCollector.start();
         done.await();
+    }
+
+    /** MQTT·Modbus 수집기의 start()를 같은 모양으로 다루기 위한 함수형 인터페이스 (MQTT 쪽은 예외를 던진다). */
+    @FunctionalInterface
+    private interface CollectorStart {
+        void start() throws Exception;
     }
 
     private static void startThread(String name, Runnable r) {
