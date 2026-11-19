@@ -11,7 +11,8 @@ name: fem
 
 services:
   timescaledb:
-    image: timescale/timescaledb:latest-pg17
+    # 버전 고정: latest는 받는 시점마다 다른 버전이 떠서 재현이 안 된다. 2026-11-19 측정에 쓴 버전 (TimescaleDB 2.32.0, PostgreSQL 17)
+    image: timescale/timescaledb:2.32.0-pg17
     environment:
       POSTGRES_DB: fem
       POSTGRES_USER: fem
