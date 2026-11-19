@@ -95,6 +95,20 @@ VW=$(login viewer "${VIEWER_PASSWORD:-viewer123}")
 [ -n "$OP" ] && [ -n "$VW" ] || { echo "로그인 실패. compose가 떠 있는지 확인"; exit 1; }
 ok "operator, viewer 로그인"
 
+echo "== 0. 화면 실시간 연결 (브라우저와 같은 Origin 헤더로 WebSocket 핸드셰이크)"
+# curl은 기본으로 Origin을 보내지 않아 서버의 같은 출처 검사를 건너뛴다. 브라우저는 항상 보낸다.
+# nginx가 Host에서 포트를 빼서 넘기던 때 브라우저만 403을 받았는데, Origin 없는 확인으로는 잡히지 않았다.
+ws_handshake() { # origin → HTTP 코드 (101 = 연결 수락)
+  curl -s -o /dev/null -w '%{http_code}' --max-time 3 -H "Origin: $1" \
+    -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' \
+    -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' "${API%/api}/ws/ui?token=$VW"
+}
+origin=${API%/api}
+code=$(ws_handshake "$origin")
+[ "$code" = 101 ] && ok "같은 출처($origin) → 101" || bad "같은 출처($origin) → $code (101 기대. nginx Host 헤더 확인)"
+code=$(ws_handshake "http://evil.example")
+[ "$code" = 403 ] && ok "다른 사이트 Origin → 403 (교차 출처 차단 유지)" || bad "다른 사이트 Origin → $code (403 기대)"
+
 echo "== 1. 조회자는 명령 불가"
 code=$(issue "$VW" "chk-$RUN-viewer" A-0001 STOP | tail -1)
 [ "$code" = 403 ] && ok "viewer 정지 요청 → 403" || bad "viewer 정지 요청 → $code (403 기대)"
