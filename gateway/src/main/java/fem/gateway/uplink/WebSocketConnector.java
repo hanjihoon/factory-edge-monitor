@@ -52,9 +52,15 @@ public final class WebSocketConnector implements Runnable {
                 conn.ws = ws;
                 backoff.reset();
                 uplink.onConnected(conn);
-                conn.closed.join(); // 끊길 때까지 여기서 기다린다
-                uplink.onDisconnected(conn);
+                try {
+                    // 끊길 때까지 여기서 기다린다. join()은 인터럽트에 반응하지 않아 종료 신호를 못 받으므로 get()을 쓴다
+                    conn.closed.get();
+                } finally {
+                    uplink.onDisconnected(conn);
+                }
             } catch (InterruptedException e) {
+                // 종료 신호: 연결을 닫고 끝낸다 (닫지 않으면 서버에는 연결이 계속 살아 있는 것으로 보인다)
+                conn.close("shutdown");
                 Thread.currentThread().interrupt();
                 return;
             } catch (Exception e) {
