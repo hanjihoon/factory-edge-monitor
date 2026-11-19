@@ -49,3 +49,13 @@ dt { color: var(--muted); }
 .audit { margin-top: 8px; border-top: 1px solid var(--line); }
 .audit h3 { font-size: 13px; display: flex; justify-content: space-between; }
 .audit ol { margin: 0; padding-left: 18px; max-height: 160px; overflow-y: auto; }
+
+/* 가동률 KPI */
+.muted { color: var(--muted); }
+.kpi h3 { font-size: 13px; margin: 10px 0 4px; color: var(--muted); font-weight: normal; }
+.kpi-factory { margin-bottom: 8px; }
+.kpi-head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.kpi-pct { font-size: 20px; font-weight: bold; color: var(--ok); }
+.kpi-bars { display: flex; align-items: flex-end; gap: 2px; height: 36px; margin-top: 4px; border-bottom: 1px solid var(--line); }
+.kpi-bars i { flex: 1; background: var(--ok); opacity: 0.8; min-width: 2px; }
+.clickable { cursor: pointer; }

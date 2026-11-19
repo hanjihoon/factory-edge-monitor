@@ -65,3 +65,11 @@ export type LiveFrame =
   | { type: 'devices'; items: Device[]; serverTime: number }
   | { type: 'gateway'; item: Gateway }
   | { type: 'command'; item: Command }
+
+/** GET /api/kpi — 최근 N시간 가동률 (서버 KpiReport). 가동률 = 가동 샘플 ÷ 전체 샘플 */
+export interface KpiReport {
+  hours: number
+  factories: { factoryId: string; samples: number; running: number; stopped: number; fault: number; availabilityPct: number }[]
+  hourly: { factoryId: string; hourStartMs: number; samples: number; availabilityPct: number }[]
+  worstDevices: { deviceId: string; factoryId: string; samples: number; faultSamples: number; availabilityPct: number }[]
+}

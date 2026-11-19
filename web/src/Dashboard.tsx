@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { api, ApiError } from './api'
 import { alarms, newCommandId, percentile, summarize } from './store'
 import type { AuditEntry, Command, CommandAction, Device, Gateway, Session } from './types'
+import { KpiPanel } from './KpiPanel'
 import { useLive } from './useLive'
 
 const fmtTime = (ms: number) => (ms ? new Date(ms).toLocaleTimeString('ko-KR', { hour12: false }) : '-')
@@ -45,6 +46,7 @@ export function Dashboard({ session, onLogout }: { session: Session; onLogout: (
             </tbody>
           </table>
         </div>
+        <KpiPanel token={session.token} onSelect={setSelected} />
         <div className="panel alarms">
           <h2>알람 ({alarms(devices).length})</h2>
           <ul>
