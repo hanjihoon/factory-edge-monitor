@@ -8,6 +8,7 @@ import fem.server.application.port.in.IngestBatchUseCase.Result;
 import fem.server.application.port.out.LiveUpdates;
 import fem.server.domain.DeviceSnapshot;
 import fem.server.domain.GatewayView;
+import fem.server.domain.RemoteCommand;
 import org.junit.jupiter.api.Test;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -25,6 +26,10 @@ class IngestServiceTest {
         @Override
         public void devicesChanged(List<DeviceSnapshot> devices) {
             pushed.add(devices);
+        }
+
+        @Override
+        public void commandChanged(RemoteCommand command) {
         }
 
         @Override

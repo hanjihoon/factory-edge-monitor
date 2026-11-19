@@ -11,7 +11,9 @@ import fem.gateway.wire.WireCodec;
 import fem.server.application.FakeTransactionManager;
 import fem.server.application.GatewayPresenceService;
 import fem.server.application.InMemoryTelemetryRepository;
+import fem.server.application.port.out.CommandRepository;
 import fem.server.application.port.out.TelemetryRepository;
+import fem.server.application.InMemoryCommandRepository;
 import fem.server.domain.GatewayView;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -65,6 +67,13 @@ class GatewayUplinkEndToEndTest {
     @TestBean
     TelemetryRepository repository;
 
+    @TestBean
+    CommandRepository commandRepository;
+
+    static CommandRepository commandRepository() {
+        return new InMemoryCommandRepository();
+    }
+
     static TelemetryRepository repository() {
         return new InMemoryTelemetryRepository();
     }
@@ -100,7 +109,11 @@ class GatewayUplinkEndToEndTest {
     }
 
     private Uplink startGateway(SqliteOutbox outbox, String token) {
-        Uplink uplink = new Uplink("gw-a", outbox, codec, cmd -> {}, System::currentTimeMillis, 500, 8, 5_000);
+        return startGateway(outbox, token, cmd -> {});
+    }
+
+    private Uplink startGateway(SqliteOutbox outbox, String token, java.util.function.Consumer<fem.common.wire.WireMessages.Command> commands) {
+        Uplink uplink = new Uplink("gw-a", outbox, codec, commands, System::currentTimeMillis, 500, 8, 5_000);
         WebSocketConnector connector = new WebSocketConnector(URI.create("ws://127.0.0.1:" + port + "/ws/gateway"),
                 "gw-a", token, uplink, new Backoff(100, 500, new Random(1)));
         threads.add(Thread.ofVirtual().start(uplink));
@@ -176,5 +189,37 @@ class GatewayUplinkEndToEndTest {
                 .join());
         var handshake = assertInstanceOf(java.net.http.WebSocketHandshakeException.class, e.getCause());
         assertEquals(401, handshake.getResponse().statusCode());
+    }
+
+    @Autowired
+    fem.server.application.port.in.IssueCommandUseCase commandUseCase;
+
+    @Test
+    void command_round_trip_through_real_gateway_command_service() throws Exception {
+        // 게이트웨이 쪽: 실제 CommandService + 설비 대신 즉시 APPLIED를 돌려주는 실행기. 실행 횟수를 센다
+        java.util.concurrent.atomic.AtomicInteger executions = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.atomic.AtomicReference<Uplink> uplinkRef = new java.util.concurrent.atomic.AtomicReference<>();
+        fem.gateway.command.CommandService gatewayCommands = new fem.gateway.command.CommandService(
+                (id, device, action) -> {
+                    executions.incrementAndGet();
+                    return new fem.gateway.command.CommandExecutor.Result(
+                            fem.common.wire.WireMessages.CommandOutcome.APPLIED, "stopped");
+                },
+                result -> uplinkRef.get().sendIfConnected(result), System::currentTimeMillis);
+        try (SqliteOutbox outbox = new SqliteOutbox(dir.resolve("cmd.db"), 1000, codec, System::currentTimeMillis)) {
+            Uplink uplink = startGateway(outbox, "test-token", gatewayCommands::handle);
+            uplinkRef.set(uplink);
+            await(uplink::connected, 5_000);
+
+            commandUseCase.issue("e2e-1", "A-0009", fem.common.wire.WireMessages.CommandAction.STOP, "operator");
+            commandUseCase.issue("e2e-1", "A-0009", fem.common.wire.WireMessages.CommandAction.STOP, "operator"); // 더블클릭
+
+            await(() -> commandUseCase.recent(50).stream().anyMatch(c -> c.commandId().equals("e2e-1")
+                    && c.status() == fem.server.domain.RemoteCommand.Status.SUCCEEDED), 5_000);
+            assertEquals(1, executions.get(), "applied exactly once");
+            assertTrue(commandUseCase.audit("e2e-1").stream().anyMatch(a -> a.event().equals("RESULT") && a.actor().equals("gw-a")));
+        } finally {
+            gatewayCommands.close();
+        }
     }
 }
