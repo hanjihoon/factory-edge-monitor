@@ -12,6 +12,8 @@ dependencies {
     implementation(libs.slf4j.api)
     runtimeOnly(libs.logback.classic)
 
+    // 수집기 테스트에서 실제 에뮬레이터 Modbus 설비를 폴링해 본다 (테스트 전용)
+    testImplementation(project(":emulator"))
     testImplementation(platform(libs.junit.bom))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")

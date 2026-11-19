@@ -22,7 +22,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * <p>큐가 가득 차면 {@link #submit}이 막힌다 (배압). 디스크가 느려지면 수집도 함께 느려지는 편이
  * 메모리에 무한정 쌓다가 죽는 것보다 낫다.
  */
-public final class IngestWriter implements Runnable {
+public final class IngestWriter implements Runnable, RecordSink {
 
     private static final Logger log = LoggerFactory.getLogger(IngestWriter.class);
     private static final long RETRY_DELAY_MS = 1000;
@@ -53,6 +53,7 @@ public final class IngestWriter implements Runnable {
     }
 
     /** 큐에 넣는다. 가득 찼으면 자리가 날 때까지 기다린다. */
+    @Override
     public void submit(TelemetryRecord record, Runnable onDurable) throws InterruptedException {
         queue.put(new Pending(record, onDurable));
     }
