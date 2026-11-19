@@ -101,6 +101,10 @@ case "${1:-steady}" in
     log "복구 시간 (회선 복구 → 모든 게이트웨이 적체 해소): ${slowest}초 / 차단 시간 $((t_restore - t_cut))초"
     sleep 5
     report "$from" "$to"
+    # 복구 직후 180초 동안 측정된 데이터가 다 저장될 때까지 기다린 뒤 실시간 회복을 본다
+    wait_until=$(( t_restore + 190 )); now=$(date +%s)
+    [ "$now" -ge "$wait_until" ] || sleep $(( wait_until - now ))
+    docker compose exec -T timescaledb psql -U fem -d fem -v restore="'$to'" < "$(dirname "$0")/recovery.sql"
     ;;
   *)
     echo "usage: $0 steady [seconds] | outage [seconds]"; exit 1 ;;

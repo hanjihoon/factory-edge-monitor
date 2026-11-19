@@ -50,7 +50,10 @@ public record GatewayConfig(
                 URI.create(env.getOrDefault("SERVER_WS_URL", "ws://localhost:8080/ws/gateway")),
                 Path.of(env.getOrDefault("BUFFER_PATH", "buffer.db")),
                 Long.parseLong(env.getOrDefault("BUFFER_MAX_ROWS", String.valueOf(600L * 21_600))),
-                Integer.parseInt(env.getOrDefault("BATCH_SIZE", "500")),
+                // 2,000: 서버가 묶음마다 내는 고정 비용(문장 실행·커밋·설비 현재 상태 갱신 최대 600행)을
+                // 더 많은 건수로 나눠 적체 소진을 빠르게 한다. 레코드 JSON 약 250B × 2,000 ≈ 0.5MB로
+                // 서버 메시지 한도(2MB, WebSocketConfig.MAX_MESSAGE_BYTES) 안이다. (설계 문서 10장 측정 근거)
+                Integer.parseInt(env.getOrDefault("BATCH_SIZE", "2000")),
                 Integer.parseInt(env.getOrDefault("WINDOW", "8")),
                 Long.parseLong(env.getOrDefault("ACK_TIMEOUT_MS", "15000")),
                 Long.parseLong(env.getOrDefault("COMMAND_TIMEOUT_MS", "3000")));
