@@ -3,6 +3,7 @@
 #
 #   scripts/measure.sh steady [초]     정상 상태 처리량·지연·중복·유실 (기본 120초)
 #   scripts/measure.sh outage [초]     두 공장 회선을 끊었다가 복구 → 복구 시간, 유실 0건 확인 (기본 600초 = 10분)
+#   scripts/measure.sh fault <서비스> [초]  구성 요소를 강제 종료(kill -9)했다 다시 띄움 → 회복 시간, 유실·중복 (기본 30초)
 #
 # 필요한 것: bash, curl, docker compose. (jq·python 없이 동작하도록 작성)
 set -euo pipefail
@@ -106,6 +107,44 @@ case "${1:-steady}" in
     [ "$now" -ge "$wait_until" ] || sleep $(( wait_until - now ))
     docker compose exec -T timescaledb psql -U fem -d fem -v restore="'$to'" < "$(dirname "$0")/recovery.sql"
     ;;
+  fault)
+    # 회선이 아닌 구성 요소를 강제 종료(kill -9)했다가 다시 띄운다. 정상 종료가 아니라 전원이 나간 것과 같다.
+    #   gateway-a  MQTT 게이트웨이. 디스크 커밋 후 PUBACK + 브로커 영속 세션이면 유실 0이어야 한다
+    #   gateway-b  Modbus 게이트웨이. 꺼진 동안은 아무도 폴링하지 않으므로 그 사이 샘플은 수집 단계에서 빠진다 (예상된 한계)
+    #   server     커밋 전 묶음은 ack가 안 나갔으므로 재전송 → 유실 0, 중복 0이어야 한다
+    #   timescaledb  서버가 저장에 실패하면 ack를 안 보낸다 → 게이트웨이에 쌓였다가 재전송
+    #   mosquitto  공장 A 브로커. 꺼진 동안 설비(에뮬레이터)의 발행이 실패한다 → 설비 쪽 손실 (설비가 버퍼를 갖는지에 달림)
+    svc=${2:?"usage: $0 fault <gateway-a|gateway-b|server|timescaledb|mosquitto> [down_seconds]"}
+    down=${3:-30}
+    warmup=20
+    log "워밍업 ${warmup}초"; sleep $warmup
+    from=$(now_iso)
+    sleep 5
+    log "$svc 강제 종료 (SIGKILL) — ${down}초 뒤 다시 띄운다"
+    docker compose kill -s KILL "$svc" >/dev/null 2>&1
+    sleep "$down"
+    docker compose start "$svc" >/dev/null 2>&1; t_start=$(date +%s)
+    log "$svc 기동. 모든 게이트웨이가 새 상태 보고에서 적체 해소(가장 오래된 미확인 < ${DRAINED_AGE_MS}ms)를 보고할 때까지 잰다"
+    sleep 10
+    deadline=$(( t_start + 600 ))
+    while :; do
+      [ "$(date +%s)" -lt "$deadline" ] || { log "10분 안에 회복하지 않음"; break; }
+      # 서버를 재시작하면 사용자 세션(메모리)이 사라지므로 매번 다시 로그인한다
+      TOKEN=$(login 2>/dev/null) || { sleep 1; continue; }
+      rows=$(gateways_json 2>/dev/null | tr '}' '\n' | grep -o '"gatewayId":"[^"]*"\|"oldestBufferedAgeMs":-\?[0-9]*\|"statusFresh":[a-z]*' | tr '\n' ' ' || true)
+      # ↑ 서버가 아직 안 떴으면 curl이 실패한다. pipefail 때문에 스크립트 전체가 끝나지 않도록 빈 값으로 둔다
+      n_ok=$(echo "$rows" | grep -o '"gatewayId"[^"]*"[^"]*" "oldestBufferedAgeMs":[0-9]* "statusFresh":true' \
+             | awk -v lim="$DRAINED_AGE_MS" '{split($2, a, ":"); if (a[2] + 0 < lim) n++} END {print n + 0}' || true)
+      # ↑ 서버 재시작 직후에는 새 상태 보고가 하나도 없어 grep이 실패한다 (같은 이유로 || true)
+      [ "$n_ok" -ge 2 ] && break
+      sleep 1
+    done
+    log "회복 시간 ($svc 기동 → 두 게이트웨이 적체 해소): $(( $(date +%s) - t_start ))초 / 중단 ${down}초"
+    # 기동 뒤 30초까지 측정된 데이터를 포함해야 재기동 경계의 빈 번호를 잡는다
+    end=$(( t_start + 30 )); now=$(date +%s); [ "$now" -ge $(( end + 10 )) ] || sleep $(( end + 10 - now ))
+    to=$(date -u -d "@$end" +"%Y-%m-%d %H:%M:%S+00")
+    report "$from" "$to" | sed -n '/== 3/,$p'
+    ;;
   *)
-    echo "usage: $0 steady [seconds] | outage [seconds]"; exit 1 ;;
+    echo "usage: $0 steady [seconds] | outage [seconds] | fault <service> [down_seconds]"; exit 1 ;;
 esac
