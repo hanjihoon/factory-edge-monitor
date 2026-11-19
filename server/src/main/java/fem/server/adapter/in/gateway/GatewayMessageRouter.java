@@ -46,7 +46,8 @@ public class GatewayMessageRouter {
                     log.info("{} batch {}..{}: inserted={} duplicates={} rejected={}", gw.gatewayId(),
                             batch.fromOutboxId(), batch.toOutboxId(), r.inserted(), r.duplicates(), r.rejected());
                 }
-                yield Optional.of(new Ack(batch.toOutboxId())); // 커밋이 끝난 뒤에만 여기 온다
+                // 커밋이 끝난 뒤에만 여기 온다. 받은 범위를 그대로 돌려준다 (범위 ack, WireMessages.Ack)
+                yield Optional.of(new Ack(batch.fromOutboxId(), batch.toOutboxId()));
             }
             case GatewayStatus status -> {
                 presence.status(gw.gatewayId(), status);

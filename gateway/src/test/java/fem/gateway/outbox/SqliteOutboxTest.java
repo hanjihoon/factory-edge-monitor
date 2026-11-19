@@ -63,14 +63,48 @@ class SqliteOutboxTest {
     }
 
     @Test
-    void ack_deletes_only_up_to_given_id() throws Exception {
-        open(1000).append(records(1, 5));
-        long secondId = outbox.fetchAfter(0, 2).get(1).id();
+    void fetch_range_stops_at_upper_bound() throws Exception {
+        open(1000).append(records(1, 10));
+        long fourthId = outbox.fetchAfter(0, 4).get(3).id();
 
-        assertEquals(2, outbox.deleteUpTo(secondId));
+        assertEquals(List.of(1L, 2L, 3L, 4L), seqs(outbox.fetchRange(0, fourthId, 100)));
+        assertEquals(List.of(3L, 4L), seqs(outbox.fetchRange(outbox.fetchAfter(0, 2).get(1).id(), fourthId, 100)));
+    }
 
-        assertEquals(List.of(3L, 4L, 5L), seqs(outbox.fetchAfter(0, 10)));
-        assertEquals(3, outbox.stats().count());
+    @Test
+    void max_id_is_zero_when_empty_and_last_id_otherwise() throws Exception {
+        open(1000);
+        assertEquals(0, outbox.maxId());
+
+        outbox.append(records(1, 3));
+
+        assertEquals(outbox.fetchAfter(0, 10).getLast().id(), outbox.maxId());
+    }
+
+    @Test
+    void ack_deletes_exactly_the_given_range() throws Exception {
+        open(1000).append(records(1, 6));
+        List<SqliteOutbox.Entry> all = outbox.fetchAfter(0, 10);
+
+        // 뒤쪽 범위(실시간 묶음)를 먼저 지워도 앞쪽(밀린 데이터)은 남는다
+        assertEquals(2, outbox.deleteRange(all.get(4).id(), all.get(5).id()));
+        assertEquals(List.of(1L, 2L, 3L, 4L), seqs(outbox.fetchAfter(0, 10)));
+
+        assertEquals(2, outbox.deleteRange(all.get(1).id(), all.get(2).id()));
+        assertEquals(List.of(1L, 4L), seqs(outbox.fetchAfter(0, 10)), "gaps are fine, order is kept");
+        assertEquals(2, outbox.stats().count());
+    }
+
+    @Test
+    void over_capacity_drops_exactly_the_oldest_even_with_gaps() throws Exception {
+        open(6).append(records(1, 6));
+        List<SqliteOutbox.Entry> all = outbox.fetchAfter(0, 10);
+        outbox.deleteRange(all.get(1).id(), all.get(2).id()); // 2, 3이 빠져 id에 빈틈: 1, 4, 5, 6
+
+        outbox.append(records(7, 10)); // 8건 → 상한 6, 가장 오래된 2건(1, 4)을 버려야 한다
+
+        assertEquals(List.of(5L, 6L, 7L, 8L, 9L, 10L), seqs(outbox.fetchAfter(0, 100)));
+        assertEquals(2, outbox.stats().droppedTotal());
     }
 
     @Test
@@ -86,8 +120,9 @@ class SqliteOutboxTest {
     @Test
     void ids_are_never_reused_even_after_everything_is_acked_and_restarted() throws Exception {
         open(1000).append(records(1, 3));
-        long lastId = outbox.fetchAfter(0, 10).getLast().id();
-        outbox.deleteUpTo(lastId);
+        List<SqliteOutbox.Entry> all = outbox.fetchAfter(0, 10);
+        long lastId = all.getLast().id();
+        outbox.deleteRange(all.getFirst().id(), lastId);
 
         open(1000).append(records(4, 4));
 

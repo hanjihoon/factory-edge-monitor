@@ -28,7 +28,7 @@ class StatusReporterTest {
         WireCodec codec = new WireCodec();
         try (SqliteOutbox outbox = new SqliteOutbox(dir.resolve("b.db"), 1, codec, clock::get)) {
             DeviceActivity activity = new DeviceActivity();
-            Uplink uplink = new Uplink("gw-a", outbox, codec, c -> {}, clock::get, 10, 1, 1000);
+            Uplink uplink = new Uplink("gw-a", outbox, codec, c -> {}, clock::get, 10, 2, 1000);
             StatusReporter reporter = new StatusReporter("gw-a", outbox, activity, uplink, clock::get);
 
             TelemetryRecord r = new TelemetryRecord("A-0001", "A", Protocol.MQTT, 1, 0, 0, DeviceState.RUNNING, 0, 0, 0, 0);
@@ -45,7 +45,7 @@ class StatusReporterTest {
     void empty_buffer_has_zero_age() throws Exception {
         WireCodec codec = new WireCodec();
         try (SqliteOutbox outbox = new SqliteOutbox(dir.resolve("c.db"), 10, codec, () -> 0)) {
-            Uplink uplink = new Uplink("gw-a", outbox, codec, c -> {}, () -> 0, 10, 1, 1000);
+            Uplink uplink = new Uplink("gw-a", outbox, codec, c -> {}, () -> 0, 10, 2, 1000);
             StatusReporter reporter = new StatusReporter("gw-a", outbox, new DeviceActivity(), uplink, () -> 99_999);
 
             assertEquals(0, reporter.snapshot().oldestBufferedAgeMs());

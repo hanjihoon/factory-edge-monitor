@@ -22,7 +22,9 @@ public final class WireMessages {
      * 게이트웨이 → 서버. 디스크 버퍼(outbox)에서 꺼낸 묶음.
      *
      * <p>outboxId는 게이트웨이 로컬에서 단조 증가하는 번호다. 서버는 이 묶음을 DB에 커밋한 뒤
-     * {@link Ack}로 {@code toOutboxId}를 돌려준다. 게이트웨이는 그 번호 이하를 디스크에서 지운다.
+     * {@link Ack}로 묶음의 범위({@code fromOutboxId ~ toOutboxId})를 그대로 돌려준다. 게이트웨이는 정확히 그 범위만
+     * 디스크에서 지운다. 게이트웨이는 실시간 데이터와 밀린 데이터(백필)를 섞어 보내므로 묶음이 id 순서대로
+     * 오지 않는다. 그래서 "여기까지 전부"라는 누적 ack가 아니라 묶음 단위 범위 ack를 쓴다.
      * 커밋 전에 연결이 끊기면 ack가 안 오므로 게이트웨이는 같은 묶음을 다시 보낸다
      * → 서버 입장에서는 중복이 생기지만 (deviceId, seq) 유니크 키로 걸러진다.
      * 즉 "최소 한 번 전달 + 서버 측 중복 제거 = 결과적으로 정확히 한 번 저장"이다.
@@ -30,8 +32,11 @@ public final class WireMessages {
     public record Batch(String gatewayId, long fromOutboxId, long toOutboxId, List<TelemetryRecord> records) {
     }
 
-    /** 서버 → 게이트웨이. toOutboxId까지 커밋 완료 (누적 ack). */
-    public record Ack(long toOutboxId) {
+    /**
+     * 서버 → 게이트웨이. 이 범위의 묶음을 커밋 완료 (범위 ack). 받은 {@link Batch}의 from/to를 그대로 돌려준다.
+     * 누적 ack가 아니므로 더 작은 번호의 묶음이 저장됐다는 뜻은 없다.
+     */
+    public record Ack(long fromOutboxId, long toOutboxId) {
     }
 
     /**

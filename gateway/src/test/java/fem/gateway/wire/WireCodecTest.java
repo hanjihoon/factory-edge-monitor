@@ -30,7 +30,7 @@ class WireCodecTest {
     @Test
     void every_message_type_round_trips() {
         List<Object> messages = List.of(
-                new Ack(42),
+                new Ack(40, 42),
                 new GatewayStatus("gw-a", 10, 500, 600, 3, 99),
                 new Command("c-1", "A-0001", CommandAction.STOP, 1, 2),
                 new CommandResult("c-1", "A-0001", CommandOutcome.APPLIED, "ok", 3));
@@ -42,10 +42,10 @@ class WireCodecTest {
 
     @Test
     void frame_has_type_and_body() {
-        String text = codec.encode(new Ack(7));
+        String text = codec.encode(new Ack(5, 7));
 
         assertTrue(text.contains("\"type\":\"ACK\""), text);
-        assertTrue(text.contains("\"body\":{\"toOutboxId\":7}"), text);
+        assertTrue(text.contains("\"body\":{\"fromOutboxId\":5,\"toOutboxId\":7}"), text);
     }
 
     @Test
