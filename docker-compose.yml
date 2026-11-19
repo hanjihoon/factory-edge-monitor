@@ -29,9 +29,16 @@ services:
       DB_URL: jdbc:postgresql://timescaledb:5432/fem
       DB_USER: fem
       DB_PASSWORD: fem
-    ports: [ "8080:8080" ]           # 관제 UI + REST + WebSocket
+    ports: [ "8081:8080" ]           # 측정·디버깅용 직접 접근. 관제 UI는 web(8080)으로
     depends_on:
       timescaledb: { condition: service_healthy }
+    networks: [ central ]
+
+  # 관제 UI (nginx). /api, /ws 는 server로 프록시 → 브라우저는 한 주소만 본다
+  web:
+    build: { context: ./web }
+    ports: [ "8080:80" ]
+    depends_on: [ server ]
     networks: [ central ]
 
   # 공장 회선 모사. 8474는 장애 주입용 관리 API
