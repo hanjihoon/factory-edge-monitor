@@ -19,6 +19,9 @@ dependencies {
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     // 종단 테스트: 실제 게이트웨이 전송 코드(Uplink, WebSocketConnector, SqliteOutbox)를 서버에 붙여 본다
     testImplementation(project(":gateway"))
+    // 저장소 테스트: 메모리 가짜가 아니라 운영과 같은 TimescaleDB 이미지에서 실제 SQL을 돌린다 (버전은 Boot BOM이 관리)
+    testImplementation("org.testcontainers:testcontainers-postgresql")
+    testImplementation("org.testcontainers:testcontainers-junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 

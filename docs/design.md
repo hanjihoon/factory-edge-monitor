@@ -278,7 +278,7 @@ JWT 대신 서버 메모리 세션을 쓴 이유: 서버 1대 구성이라 상�
 | 순서 뒤바뀜 | 같은 설비의 seq가 줄어듦 | 저장은 그대로(시계열은 측정 시각 기준), 현재 상태는 seq가 클 때만 갱신 | — | `LatestPerDeviceTest`, `IngestServiceTest` 늦게 온 옛 기록 |
 | 서버 재시작 | 연결 끊김과 같음 | 커밋 전 묶음은 ack가 안 나가므로 게이트웨이가 재전송 | 같은 절차 | `IngestServiceTest` 실패 시 롤백·ack 없음 |
 | 공장 내부 브로커 다운 | 게이트웨이 상태 보고의 활성 설비 수가 0으로 떨어짐 (서버 연결은 유지) | 게이트웨이는 브로커 재연결을 계속 시도. 전송·상태 보고는 별도 스레드라 멈추지 않아 디스크 미전송분은 계속 올라간다. 이 동안 명령은 DEVICE_UNREACHABLE → 서버 재시도 | 브로커 복구 시 영속 세션으로 보관 메시지 수신. 설비 측 QoS 1 재발행분은 서버 중복 제거 | 브로커·서버 없이 게이트웨이를 실행해 두 재시도가 동시에 도는 것 확인 (수동). 정상 상태 브로커 연동은 compose에서 확인. 브로커를 내렸다 올리는 시나리오는 **미검증** |
-| 잘못된 데이터 (독이 든 메시지) | 저장 전 검사 (`RecordCheck`): 빈 필드, 서버가 모르는 값(새 버전 게이트웨이), 남의 공장 설비, DB가 못 받는 시각 | 그 레코드만 `ingest_rejected`에 원문과 이유를 남기고 나머지는 저장 → ack. 예외로 처리하면 ack가 안 나가 같은 묶음을 끝없이 재전송하고 그 뒤 데이터까지 막힌다 | 운영자가 격리 테이블을 보고 원인 조치 | `IngestServiceTest` 격리, `ServerWireCodecTest` 모르는 enum, `RecordCheckTest` |
+| 잘못된 데이터 (독이 든 메시지) | 저장 전 검사 (`RecordCheck`): 빈 필드, 서버가 모르는 값(새 버전 게이트웨이), 남의 공장 설비, DB가 못 받는 시각, **보관 기간(30일)보다 옛 측정 시각** (설비 시계 초기화. 저장하면 보관 정책이 곧바로 지워 "ack했는데 사라지는" 유실이 된다) | 그 레코드만 `ingest_rejected`에 원문과 이유를 남기고 나머지는 저장 → ack. 예외로 처리하면 ack가 안 나가 같은 묶음을 끝없이 재전송하고 그 뒤 데이터까지 막힌다 | 운영자가 격리 테이블을 보고 원인 조치 | `IngestServiceTest` 격리, `ServerWireCodecTest` 모르는 enum, `RecordCheckTest`, `JdbcTelemetryRepositoryTest` (실제 TimescaleDB) |
 | 명령 결과가 시간 초과 뒤 도착 | 시간 초과(5초 × 3회)로 TIMED_OUT 처리한 뒤 결과 수신 | 시간 초과는 "결과 모름"이지 실패가 아니므로, 늦게 온 확정 결과로 상태를 바로잡고 감사 로그 `LATE_RESULT` | — | `RemoteCommandTest`, `CommandServiceTest` 늦은 결과 |
 
 ## 9. UI 설계
