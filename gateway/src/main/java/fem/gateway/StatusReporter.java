@@ -35,7 +35,9 @@ public final class StatusReporter implements Runnable {
     GatewayStatus snapshot() throws Exception {
         long now = clock.getAsLong();
         SqliteOutbox.Stats s = outbox.stats();
-        long oldestAge = s.count() == 0 ? 0 : now - s.oldestCreatedAt();
+        // now를 먼저 잡고 stats를 읽으므로, 그 사이에 들어온 행이 가장 오래된 행이면 나이가 음수가 된다 (실측 -697ms).
+        // 방금 들어온 행이라는 뜻이므로 0으로 본다.
+        long oldestAge = s.count() == 0 ? 0 : Math.max(0, now - s.oldestCreatedAt());
         return new GatewayStatus(gatewayId, s.count(), oldestAge, activity.activeWithin(PERIOD_MS, now), s.droppedTotal(), now);
     }
 
