@@ -147,7 +147,22 @@ Modbus 설비는 게이트웨이가 읽어 가는 구조라 중복·순서 장�
 알려진 한계: 레지스터 0~6을 하나씩 갱신하므로 게이트웨이가 정확히 그 사이에 읽으면 값 하나가 1초 전 값일 수 있다. 카운터를 마지막에 써서 "새 seq + 옛 값" 조합은 피한다.
 
 ### 저장 구조와 보관 정책
-TODO (4단계)
+| 테이블 | 종류 | 키 | 보관 | 용도 |
+|---|---|---|---|---|
+| `telemetry` | hypertable (device_ts, 1일 청크) | (device_id, device_ts, seq) | 30일 (retention policy) | 시계열 원본. `server_ts`로 저장 시각 기록 |
+| `telemetry_dedup` | 일반 테이블 | **(device_id, seq)** | 2일 (서버 스케줄러가 10분마다 정리) | 중복 판정 전용 |
+| `device_current` | 일반 테이블 | device_id | 영구 | 설비 현재 상태. seq가 더 클 때만 갱신 |
+
+**왜 중복 판정 테이블을 따로 두나**: TimescaleDB hypertable의 유니크 인덱스에는 시간 파티션 컬럼이 반드시 들어가야 한다.
+그래서 `(device_id, seq)` 단독 유니크를 hypertable에 걸 수 없고, `(device_id, seq, device_ts)`로 걸면
+같은 seq를 다른 시각에 다시 읽은 경우(Modbus 재읽기 등)를 중복으로 못 잡는다.
+일반 테이블에 `(device_id, seq)` 기본 키를 두고, 한 SQL 문(CTE) 안에서 "중복 판정 테이블에 넣기 → 새로 들어간 키만 hypertable에 넣기"를 한다.
+재전송 중복은 게이트웨이 버퍼 보관 시간(최대 6시간) 안에서만 생기므로 판정 기록은 2일이면 충분하다.
+
+**쓰기 방식**: 묶음 500건을 열마다 배열 하나로 보내 `unnest`로 펼친다. 왕복 1번, 문장 1개.
+현재 상태 갱신은 `INSERT ... ON CONFLICT DO UPDATE ... WHERE c.seq < EXCLUDED.seq` 한 문장이며,
+같은 행을 한 문장에서 두 번 갱신할 수 없으므로 묶음을 먼저 설비당 최신 1건으로 줄인다 (`LatestPerDevice`).
+저장과 현재 상태 갱신은 한 트랜잭션이고, 화면 알림은 커밋 뒤에 보낸다.
 
 ## 7. 인터페이스 명세
 
