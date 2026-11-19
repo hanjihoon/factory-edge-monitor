@@ -103,8 +103,10 @@ class GatewayUplinkEndToEndTest {
     }
 
     private static List<TelemetryRecord> records(String device, long from, long to) {
+        // 측정 시각은 지금 기준이어야 한다. 30일보다 옛 시각은 서버가 시계 이상으로 격리한다 (RecordCheck)
+        long now = System.currentTimeMillis();
         return LongStream.rangeClosed(from, to)
-                .mapToObj(s -> new TelemetryRecord(device, "A", Protocol.MQTT, s, s, s, DeviceState.RUNNING, 60, 2, 1500, 0))
+                .mapToObj(s -> new TelemetryRecord(device, "A", Protocol.MQTT, s, now + s, now + s, DeviceState.RUNNING, 60, 2, 1500, 0))
                 .toList();
     }
 

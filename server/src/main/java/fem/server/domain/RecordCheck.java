@@ -21,14 +21,23 @@ public final class RecordCheck {
     /** PostgreSQL timestamptz로 바꿀 수 있는 넉넉한 상한 (9999-12-31). 넘으면 to_timestamp가 오류를 낸다 */
     static final long MAX_EPOCH_MS = 253_402_300_799_999L;
 
+    /**
+     * telemetry 보관 기간 (V1의 retention policy 30일과 같은 값).
+     * 이보다 오래된 측정 시각으로 저장하면 보관 정책 작업이 곧바로 그 청크를 지운다. 서버는 "저장함"으로 ack했으므로
+     * 게이트웨이도 지워 버려, 흔적 없이 사라진다. 설비 시계가 초기화된 경우(배터리 방전 등)에 생긴다.
+     * 버퍼 상한이 6시간이라 정상 데이터가 30일 늦게 올 수는 없으므로 시계 이상으로 보고 격리한다.
+     */
+    public static final long RETENTION_MS = 30L * 24 * 60 * 60 * 1000;
+
     private RecordCheck() {
     }
 
     /**
      * @param factoryId 이 묶음을 보낸 게이트웨이가 인증으로 확인된 공장
+     * @param nowMs     서버 현재 시각 (보관 기간 판정용)
      * @return 저장하면 안 되는 이유. 문제없으면 empty
      */
-    public static Optional<String> problem(TelemetryRecord r, String factoryId) {
+    public static Optional<String> problem(TelemetryRecord r, String factoryId, long nowMs) {
         if (r == null) return Optional.of("null record");
         // 상태·프로토콜이 null이면 대개 서버가 모르는 값이다 (새 버전 게이트웨이). 코덱이 모르는 enum 값을 null로 읽는다
         if (r.deviceId() == null || r.factoryId() == null || r.protocol() == null || r.state() == null) {
@@ -40,6 +49,9 @@ public final class RecordCheck {
         }
         if (!validTime(r.deviceTs()) || !validTime(r.gatewayTs())) {
             return Optional.of("timestamp out of range");
+        }
+        if (r.deviceTs() < nowMs - RETENTION_MS) {
+            return Optional.of("device time older than retention (30 days), device clock may be wrong");
         }
         return Optional.empty();
     }

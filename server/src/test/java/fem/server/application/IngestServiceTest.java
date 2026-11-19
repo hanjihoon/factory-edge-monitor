@@ -20,6 +20,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class IngestServiceTest {
 
+    private static final long NOW = 1_795_000_000_000L;
+
     private final InMemoryTelemetryRepository repo = new InMemoryTelemetryRepository();
     private final FakeTransactionManager txm = new FakeTransactionManager();
     private final List<List<DeviceSnapshot>> pushed = new ArrayList<>();
@@ -36,10 +38,10 @@ class IngestServiceTest {
         @Override
         public void gatewayChanged(GatewayView gateway) {
         }
-    }, new TransactionTemplate(txm));
+    }, new TransactionTemplate(txm), () -> NOW);
 
     private static TelemetryRecord r(String device, long seq) {
-        return new TelemetryRecord(device, device.substring(0, 1), Protocol.MQTT, seq, seq, seq, DeviceState.RUNNING, 0, 0, 0, 0);
+        return new TelemetryRecord(device, device.substring(0, 1), Protocol.MQTT, seq, NOW + seq, NOW + seq, DeviceState.RUNNING, 0, 0, 0, 0);
     }
 
     private static Batch batch(TelemetryRecord... records) {
