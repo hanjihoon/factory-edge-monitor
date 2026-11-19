@@ -34,6 +34,7 @@ public class JdbcTelemetryRepository implements TelemetryRepository {
      * 2) fresh: 중복 판정 테이블에 넣는다. 이미 있으면 DO NOTHING → RETURNING에 안 나온다 = 처음 보는 키만 남는다.
      * 3) 처음 보는 키만 hypertable에 넣는다.
      * 세 단계가 한 문장이라 동시에 같은 키가 들어와도 둘 중 하나만 fresh가 된다 (기본 키 충돌로 판정).
+ * 병렬 저장: 판정표 키는 (device_id, seq) 순, 현재 상태 행은 설비 ID 순으로 잡아 트랜잭션끼리 교착하지 않는다.
      */
     private static final String INSERT_NEW = """
             WITH incoming AS (
@@ -42,6 +43,7 @@ public class JdbcTelemetryRepository implements TelemetryRepository {
                             ?::text[], ?::float8[], ?::float8[], ?::int[], ?::int[])
                      AS t(device_id, seq, factory_id, protocol, device_ts_ms, gateway_ts_ms,
                           state, temperature, vibration, rpm, alarm_code)
+                ORDER BY device_id, seq -- 판정표 키를 늘 같은 순서로 잡는다: 병렬 저장 중 겹치는 재전송이 와도 교착이 없다
             ), fresh AS (
                 INSERT INTO telemetry_dedup (device_id, seq)
                 SELECT device_id, seq FROM incoming

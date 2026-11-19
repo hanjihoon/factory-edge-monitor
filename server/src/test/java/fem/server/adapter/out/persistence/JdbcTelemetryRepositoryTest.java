@@ -214,6 +214,32 @@ class JdbcTelemetryRepositoryTest extends TimescaleDbSupport {
     }
 
     @Test
+    void batches_saved_in_parallel_touching_the_same_devices_in_different_orders_do_not_deadlock() throws Exception {
+        // 서버는 한 게이트웨이의 묶음을 병렬로 저장한다. 복구 중 백필 묶음 8개가 같은 설비 200대를 서로 다른 순서로 담고
+        // 동시에 들어온다. 현재 상태 행을 설비 ID 순으로 잠그지 않으면 PostgreSQL이 교착을 감지하고 한쪽을 실패시킨다
+        int batches = 8, devices = 200;
+        List<Batch> list = new ArrayList<>();
+        for (int b = 0; b < batches; b++) {
+            List<TelemetryRecord> records = new ArrayList<>();
+            for (int d = 1; d <= devices; d++) records.add(rec("A-%04d".formatted(d), b + 1)); // 묶음 b는 seq b+1
+            Collections.shuffle(records, new java.util.Random(b)); // 묶음마다 설비 순서가 다르다
+            list.add(batch(records));
+        }
+        CountDownLatch start = new CountDownLatch(1);
+        List<CompletableFuture<Result>> futures = list.stream()
+                .map(b -> CompletableFuture.supplyAsync(() -> await(start, () -> service(repo).ingest("gw-a", "A", b))))
+                .toList();
+        start.countDown();
+
+        long stored = 0;
+        for (var f : futures) stored += f.get().inserted(); // 교착으로 하나라도 실패하면 여기서 예외
+        assertEquals((long) batches * devices, stored);
+        assertEquals((long) batches * devices, count("SELECT count(*) FROM telemetry"));
+        // 저장이 끝난 순서와 상관없이 현재 상태는 가장 큰 seq
+        assertEquals(devices, count("SELECT count(*) FROM device_current WHERE seq = ?", batches));
+    }
+
+    @Test
     void unstorable_record_is_quarantined_and_the_rest_is_stored() {
         TelemetryRecord unknownState = new TelemetryRecord("A-0002", "A", Protocol.MQTT, 1, BASE, BASE, null, 0, 0, 0, 0);
 
