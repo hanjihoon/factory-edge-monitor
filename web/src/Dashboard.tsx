@@ -85,6 +85,9 @@ export function Dashboard({ session, onLogout }: { session: Session; onLogout: (
   )
 }
 
+/** 서버 GatewayView.DUPLICATE_SUSPECT_RECONNECTS와 같은 값 */
+const DUPLICATE_SUSPECT_RECONNECTS = 5
+
 function GatewayPanel({ gateways }: { gateways: Gateway[] }) {
   return (
     <div className="panel">
@@ -95,7 +98,13 @@ function GatewayPanel({ gateways }: { gateways: Gateway[] }) {
           {gateways.map((g) => (
             <tr key={g.gatewayId}>
               <td>{g.gatewayId}</td>
-              <td className={g.connected ? 'ok' : 'bad'}>{g.connected ? '연결' : `끊김 (${fmtTime(g.lastSeenAt)}부터)`}</td>
+              <td className={g.connected ? 'ok' : 'bad'}>
+                {g.connected ? '연결' : `끊김 (${fmtTime(g.lastSeenAt)}부터)`}
+                {/* 같은 토큰의 게이트웨이 둘이 서로 밀어내는 중. 데이터가 두 디스크로 나뉘므로 한쪽을 지우면 유실된다 */}
+                {g.reconnectsLastMinute >= DUPLICATE_SUSPECT_RECONNECTS && (
+                  <div className="bad">재접속 {g.reconnectsLastMinute}회/분 · 같은 토큰 중복 사용 의심</div>
+                )}
+              </td>
               {g.statusFresh ? (
                 <>
                   <td className={g.bufferedCount > 1000 ? 'warn' : ''}>{g.bufferedCount.toLocaleString()}</td>

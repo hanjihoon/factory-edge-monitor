@@ -33,6 +33,8 @@ export interface Gateway {
   droppedCount: number
   /** 적체 값이 지금 연결에서 받은 보고인가. false면 끊기기 전 값이라 화면에 숫자를 그대로 보이지 않는다 */
   statusFresh: boolean
+  /** 최근 1분 접속 횟수. 5 이상이면 같은 토큰을 쓰는 게이트웨이가 둘 이상인 것으로 본다 (서로 밀어내며 재접속) */
+  reconnectsLastMinute: number
 }
 
 export interface Command {
