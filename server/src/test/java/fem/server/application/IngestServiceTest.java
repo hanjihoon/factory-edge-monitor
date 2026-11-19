@@ -8,6 +8,7 @@ import fem.server.application.port.in.IngestBatchUseCase.Result;
 import fem.server.application.port.out.LiveUpdates;
 import fem.server.domain.DeviceSnapshot;
 import fem.server.domain.GatewayView;
+import fem.server.domain.RejectedRecord;
 import fem.server.domain.RemoteCommand;
 import org.junit.jupiter.api.Test;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -82,6 +83,33 @@ class IngestServiceTest {
 
         assertEquals(new Result(1, 0, 1), result);
         assertEquals(List.of("A-0001"), repo.stored.stream().map(TelemetryRecord::deviceId).toList());
+        assertEquals(1, repo.quarantined.size(), "kept for inspection, not silently dropped");
+    }
+
+    @Test
+    void unstorable_record_is_quarantined_and_the_rest_of_the_batch_is_saved() {
+        // 새 버전 게이트웨이가 서버가 모르는 상태 값을 보내면 코덱이 null로 읽는다
+        TelemetryRecord unknownState = new TelemetryRecord("A-0002", "A", Protocol.MQTT, 1, 1, 1, null, 0, 0, 0, 0);
+        TelemetryRecord badTime = new TelemetryRecord("A-0003", "A", Protocol.MQTT, 1, -5, 1, DeviceState.RUNNING, 0, 0, 0, 0);
+
+        Result result = service.ingest("gw-a", "A", batch(r("A-0001", 1), unknownState, badTime));
+
+        assertEquals(new Result(1, 0, 2), result, "no exception → the batch is acked, no endless resend");
+        assertEquals(1, txm.commits, "quarantine and data commit together, before the ack");
+        assertEquals(List.of("missing or unknown field (deviceId/factoryId/protocol/state)", "timestamp out of range"),
+                repo.quarantined.stream().map(RejectedRecord::reason).toList());
+        assertTrue(repo.quarantined.getFirst().payload().contains("A-0002"), "original content is kept");
+    }
+
+    @Test
+    void batch_with_only_bad_records_still_commits_the_quarantine() {
+        TelemetryRecord noDevice = new TelemetryRecord(null, "A", Protocol.MQTT, 1, 1, 1, DeviceState.RUNNING, 0, 0, 0, 0);
+
+        Result result = service.ingest("gw-a", "A", batch(noDevice));
+
+        assertEquals(new Result(0, 0, 1), result);
+        assertEquals(1, txm.commits);
+        assertTrue(pushed.isEmpty());
     }
 
     @Test

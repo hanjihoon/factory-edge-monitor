@@ -3,6 +3,7 @@ package fem.server.application;
 import fem.common.TelemetryRecord;
 import fem.server.application.port.out.TelemetryRepository;
 import fem.server.domain.DeviceSnapshot;
+import fem.server.domain.RejectedRecord;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -57,5 +58,12 @@ public class InMemoryTelemetryRepository implements TelemetryRepository {
     @Override
     public synchronized List<DeviceSnapshot> findAllCurrent() {
         return List.copyOf(current.values());
+    }
+
+    public final List<RejectedRecord> quarantined = new ArrayList<>();
+
+    @Override
+    public synchronized void quarantine(String gatewayId, List<RejectedRecord> rejected) {
+        quarantined.addAll(rejected);
     }
 }

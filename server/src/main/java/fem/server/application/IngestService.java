@@ -7,12 +7,16 @@ import fem.server.application.port.out.LiveUpdates;
 import fem.server.application.port.out.TelemetryRepository;
 import fem.server.domain.DeviceSnapshot;
 import fem.server.domain.LatestPerDevice;
+import fem.server.domain.RecordCheck;
+import fem.server.domain.RejectedRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * 게이트웨이 묶음 저장. "중복 제거 저장 → 현재 상태 갱신"을 한 트랜잭션으로 묶는다.
@@ -41,26 +45,31 @@ public class IngestService implements IngestBatchUseCase {
 
     @Override
     public Result ingest(String gatewayId, String factoryId, Batch batch) {
-        // 인증된 게이트웨이가 남의 공장 설비 데이터를 보내면 버린다. ack는 보내야 게이트웨이가 같은 묶음을 무한히 재전송하지 않는다.
-        List<TelemetryRecord> valid = batch.records().stream()
-                .filter(r -> factoryId.equals(r.factoryId()) && r.deviceId().startsWith(factoryId + "-"))
-                .toList();
-        int rejected = batch.records().size() - valid.size();
-        if (rejected > 0) {
-            log.warn("{} sent {} records outside factory {}, dropped", gatewayId, rejected, factoryId);
+        // 몇 번을 다시 보내도 저장될 수 없는 레코드(빈 필드, 남의 공장, 범위 밖 시각)는 격리 테이블로 보낸다.
+        // 예외로 처리하면 ack가 안 나가 게이트웨이가 같은 묶음을 끝없이 다시 보내고 그 뒤 데이터까지 막힌다 (RecordCheck).
+        List<TelemetryRecord> valid = new ArrayList<>(batch.records().size());
+        List<RejectedRecord> rejected = new ArrayList<>();
+        for (TelemetryRecord r : batch.records()) {
+            Optional<String> problem = RecordCheck.problem(r, factoryId);
+            if (problem.isPresent()) rejected.add(new RejectedRecord(problem.get(), String.valueOf(r)));
+            else valid.add(r);
         }
-        if (valid.isEmpty()) {
-            return new Result(0, 0, rejected);
+        if (!rejected.isEmpty()) {
+            log.warn("{} sent {} records that cannot be stored, quarantined (first: {})",
+                    gatewayId, rejected.size(), rejected.getFirst().reason());
         }
 
-        Saved saved = tx.execute(status -> new Saved(
-                repository.insertNew(valid),
-                repository.upsertCurrent(LatestPerDevice.of(valid))));
+        // 격리도 같은 트랜잭션: 커밋된 뒤에야 ack가 나가므로 격리 기록이 사라진 채 게이트웨이가 지우는 일이 없다
+        Saved saved = tx.execute(status -> {
+            if (!rejected.isEmpty()) repository.quarantine(gatewayId, rejected);
+            if (valid.isEmpty()) return new Saved(0, List.of());
+            return new Saved(repository.insertNew(valid), repository.upsertCurrent(LatestPerDevice.of(valid)));
+        });
 
         // 여기부터는 커밋된 뒤다
         if (!saved.changed().isEmpty()) {
             live.devicesChanged(saved.changed());
         }
-        return new Result(saved.inserted(), valid.size() - saved.inserted(), rejected);
+        return new Result(saved.inserted(), valid.size() - saved.inserted(), rejected.size());
     }
 }

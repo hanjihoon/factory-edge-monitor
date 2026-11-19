@@ -2,6 +2,7 @@ package fem.server.application.port.out;
 
 import fem.common.TelemetryRecord;
 import fem.server.domain.DeviceSnapshot;
+import fem.server.domain.RejectedRecord;
 
 import java.util.List;
 
@@ -25,4 +26,7 @@ public interface TelemetryRepository {
 
     /** 전체 설비 현재 상태 (화면 첫 로딩) */
     List<DeviceSnapshot> findAllCurrent();
+
+    /** 저장할 수 없는 레코드를 격리 테이블에 보관한다. 같은 트랜잭션 안에서 불러 ack 전에 커밋되게 한다 */
+    void quarantine(String gatewayId, List<RejectedRecord> rejected);
 }

@@ -4,6 +4,7 @@ import fem.common.wire.WireMessages.MessageType;
 import org.springframework.stereotype.Component;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.cfg.EnumFeature;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -19,7 +20,10 @@ public class ServerWireCodec {
     private final JsonMapper json;
 
     public ServerWireCodec(JsonMapper json) {
-        this.json = json;
+        // 모르는 enum 값(예: 새 버전 게이트웨이가 보낸 상태 MAINTENANCE)은 null로 읽는다.
+        // 예외로 두면 묶음 전체가 해석되지 않아 ack가 안 나가고, 게이트웨이가 같은 묶음을 끝없이 다시 보낸다.
+        // null로 읽으면 그 레코드만 RecordCheck에서 걸러져 격리되고 나머지는 저장된다.
+        this.json = json.rebuild().enable(EnumFeature.READ_UNKNOWN_ENUM_VALUES_AS_NULL).build();
     }
 
     record Frame(String type, JsonNode body) {

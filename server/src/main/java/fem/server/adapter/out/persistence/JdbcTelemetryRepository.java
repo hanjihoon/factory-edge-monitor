@@ -3,6 +3,7 @@ package fem.server.adapter.out.persistence;
 import fem.common.TelemetryRecord;
 import fem.server.application.port.out.TelemetryRepository;
 import fem.server.domain.DeviceSnapshot;
+import fem.server.domain.RejectedRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -130,6 +131,17 @@ public class JdbcTelemetryRepository implements TelemetryRepository {
     @Override
     public List<DeviceSnapshot> findAllCurrent() {
         return jdbc.query(SELECT_CURRENT, SNAPSHOT);
+    }
+
+    @Override
+    public void quarantine(String gatewayId, List<RejectedRecord> rejected) {
+        // 드물게 생기는 일이라 행마다 넣는다 (일괄 처리할 만큼 많지 않다)
+        jdbc.batchUpdate("INSERT INTO ingest_rejected (gateway_id, reason, payload) VALUES (?, ?, ?)",
+                rejected, rejected.size(), (ps, r) -> {
+                    ps.setString(1, gatewayId);
+                    ps.setString(2, r.reason());
+                    ps.setString(3, r.payload());
+                });
     }
 
     /** 중복 판정 기록은 2일만 둔다. 재전송 중복은 최대 버퍼 보관 시간(6시간) 안에서만 생긴다. */
