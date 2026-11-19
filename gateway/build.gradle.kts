@@ -16,6 +16,7 @@ dependencies {
     testImplementation(project(":emulator"))
     testImplementation(platform(libs.junit.bom))
     testImplementation("org.junit.jupiter:junit-jupiter")
+    testImplementation(libs.jqwik)       // 속성 기반 테스트: 무작위 장애 순서 수천 가지에서 유실 0 규칙 확인
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 

@@ -8,6 +8,7 @@ sqlite = "3.47.1.0"
 slf4j = "2.0.16"
 logback = "1.5.16"
 junit = "5.11.4"
+jqwik = "1.9.3"     # 속성 기반 테스트 (게이트웨이 전송 규칙을 무작위 사건 순서로 검증)
 
 [libraries]
 jackson-databind = { module = "tools.jackson.core:jackson-databind", version.ref = "jackson" }
@@ -17,6 +18,7 @@ sqlite-jdbc = { module = "org.xerial:sqlite-jdbc", version.ref = "sqlite" }
 slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
 logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
 junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
+jqwik = { module = "net.jqwik:jqwik", version.ref = "jqwik" }
 
 [plugins]
 spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }

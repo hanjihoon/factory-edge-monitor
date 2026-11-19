@@ -13,3 +13,4 @@ data/
 
 # 회사 과제 원문은 공개 저장소에 올리지 않는다
 docs/assignment/
+.jqwik-database
