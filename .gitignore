@@ -1,6 +1,8 @@
 .gradle/
 build/
-out/
+# IntelliJ 출력 폴더. "out/"만 쓰면 헥사고날 패키지(adapter/out, port/out)까지 무시되므로 위치를 고정한다
+/out/
+/*/out/
 .idea/
 .vscode/
 *.iml
