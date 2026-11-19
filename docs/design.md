@@ -158,11 +158,22 @@ TODO (4단계)
 |---|---|---|---|
 | BATCH | 게이트웨이 → 서버 | gatewayId, fromOutboxId, toOutboxId, records[] | outbox 묶음 |
 | ACK | 서버 → 게이트웨이 | toOutboxId | 해당 번호까지 DB 커밋 완료 (누적) |
-| GATEWAY_STATUS | 게이트웨이 → 서버 | bufferedCount, oldestBufferedAgeMs, connectedDevices | 5초마다 |
+| GATEWAY_STATUS | 게이트웨이 → 서버 | bufferedCount, oldestBufferedAgeMs, connectedDevices, droppedCount | 5초마다. droppedCount > 0이면 버퍼 상한 초과 유실 |
 | COMMAND | 서버 → 게이트웨이 | commandId, deviceId, action, attempt | commandId가 멱등 키 |
 | COMMAND_RESULT | 게이트웨이 → 서버 | commandId, outcome, detail | |
 
 순서 보장: 한 게이트웨이의 BATCH는 한 연결에서 순서대로 처리하고 ack도 순서대로 나간다. 연결이 바뀌면 게이트웨이는 마지막 ack 이후부터 다시 보낸다.
+
+게이트웨이 전송 규칙 (`gateway/.../uplink/Uplink.java`)
+- BATCH 하나에 최대 500건, ack 없이 최대 8개까지 연달아 보낸다 (복구 시 적체 소진 속도)
+- 가장 오래된 미확인 BATCH가 15초 안에 ack 되지 않으면 연결을 끊고 다시 연결한다 (TCP는 살아 있는데 응답이 없는 회선 대비)
+- 보낸 적 없는 번호의 ack는 무시한다 (아직 안 보낸 데이터를 지우지 않게)
+- 재연결 대기: 0.5초부터 두 배씩, 최대 30초, [절반, 전체] 구간 무작위 (여러 게이트웨이가 동시에 몰리지 않게)
+- 인증: 핸드셰이크 헤더 `Authorization: Bearer <게이트웨이 토큰>`, `X-Gateway-Id`
+
+명령 멱등 (게이트웨이)
+- 같은 commandId가 다시 오면 실행하지 않고 처음 결과를 다시 보낸다
+- `DEVICE_UNREACHABLE`은 기억하지 않는다 → 서버 재시도 시 다시 실행. MQTT 설비는 commandId로, Modbus는 "이미 목표 상태면 쓰지 않음"으로 두 번 적용되지 않는다
 
 ### REST API / UI WebSocket / 인증·권한
 TODO (4~6단계)
@@ -170,10 +181,13 @@ TODO (4~6단계)
 ## 8. 장애 시나리오
 | 상황 | 감지 방법 | 대응 | 복구 절차 | 검증 방법·결과 |
 |---|---|---|---|---|
-| 연결 끊김 | TODO | | | |
-| 메시지 중복 | | | | |
-| 순서 뒤바뀜 | | | | |
-| 서버 재시작 | | | | |
+| 연결 끊김 (회선) | WebSocket 종료·전송 실패, 또는 ack 15초 무응답 | 수집은 계속, SQLite outbox에 적체 | 백오프 재연결 → 마지막 ack 다음부터 재전송 | `UplinkTest` 재연결·시간 초과 케이스. 10분 단절 측정은 7단계 |
+| 브로커 → 게이트웨이 구간 | — | MQTT 수동 ack: 디스크 커밋 후 PUBACK. 영속 세션으로 게이트웨이 정지 중 메시지 브로커 보관 | 재연결 시 브로커가 미확인 메시지 재전송 | `MqttCollectorTest`, `IngestWriterTest` |
+| 게이트웨이 재시작 | — | outbox가 디스크에 남음 (WAL, synchronous=FULL) | 기동 시 남은 것부터 전송. AUTOINCREMENT라 id가 되돌아가지 않음 | `SqliteOutboxTest` 재시작·id 비재사용 |
+| 디스크 버퍼 가득 참 | 행 수 > 상한(6시간분) | 가장 오래된 것부터 버리고 droppedCount 증가 | 서버·UI에 유실 알람 | `SqliteOutboxTest` 상한 초과 |
+| 메시지 중복 | 설비 재발행, 재전송, Modbus 중복 읽기 | Modbus는 게이트웨이에서 이미 본 seq 제거. 나머지는 서버가 (deviceId, seq) 유니크 키로 제거 | — | `ModbusNormalizerTest`, 서버는 4단계 |
+| 순서 뒤바뀜 | 같은 설비의 seq가 줄어듦 | 저장은 그대로(시계열은 측정 시각 기준), 현재 상태는 seq가 클 때만 갱신 | — | 4단계 |
+| 서버 재시작 | 연결 끊김과 같음 | 커밋 전 묶음은 ack가 안 나가므로 게이트웨이가 재전송 | 같은 절차 | 4단계 |
 
 ## 9. UI 설계
 TODO
