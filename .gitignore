@@ -14,3 +14,6 @@ data/
 # 회사 과제 원문은 공개 저장소에 올리지 않는다
 docs/assignment/
 .jqwik-database
+
+# 개인 면접 준비 자료 (제출물 아님)
+docs/briefing*.md
