@@ -3,7 +3,7 @@
 폐쇄망 공장 2곳(설비 1,000대)의 엣지 게이트웨이와 중앙 통합 관제.
 - 설계 문서: [docs/design.md](docs/design.md) · 자체 점검: [docs/review.md](docs/review.md) · 구조도: [docs/architecture.svg](docs/architecture.svg)
 
-![관제 화면 (회선 단절 중)](docs/images/dashboard-outage.png)
+![관제 화면](docs/images/dashboard.png)
 
 ## 결과 요약 (실제 compose 구성에서 측정, 설계 문서 10장)
 | 항목 | 결과 |
